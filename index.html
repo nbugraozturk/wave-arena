@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wave Arena</title>
+    <link rel="stylesheet" href="/src/web/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game"></canvas>
+      <div id="hud">
+        <div class="hud-row">
+          <span id="wave-label">Dalga 1</span>
+          <span id="kills-label">0 öldürme</span>
+        </div>
+        <div id="combat-status">COMBAT · TEHDİT ANALİZİ</div>
+        <div class="progress-caption"><span>WAVE PROGRESS</span><span id="wave-progress-label">0 / 0</span></div>
+        <div id="wave-progress"><div id="wave-progress-fill"></div></div>
+        <div class="progress-caption health-caption"><span>HULL</span><span id="hp-value">100 / 100</span></div>
+        <div id="hp-bar"><div id="hp-ghost"></div><div id="hp-fill"></div></div>
+        <div id="shield-line" class="hidden"><span>SHIELD</span><strong id="shield-value">0</strong></div>
+        <p id="hint">WASD hareket · Fare nişan · Sol tık ateş · Q ulti</p>
+        <div id="class-line">Sınıf seç</div>
+        <div id="resource-line" class="resource-display">
+          <span><b class="resource-icon gold-icon">G</b><strong id="gold-value">0</strong><small>GOLD</small></span>
+          <span><b class="resource-icon shard-icon">S</b><strong id="shard-value">0</strong><small>SHARD</small></span>
+          <span><b class="resource-icon reroll-icon">R</b><strong id="reroll-value">0</strong><small>REROLL</small></span>
+        </div>
+        <div id="bounty-line" class="hidden"></div>
+        <div id="ult-bar"><div id="ult-fill"></div></div>
+        <p id="ult-hint">Ulti hazır değil</p>
+        <details id="build-panel" class="hud-panel hidden" aria-live="polite">
+          <summary id="build-summary" class="panel-label">Build <span>VIEW</span></summary>
+          <div id="build-tags"></div>
+        </details>
+        <details id="artifact-panel" class="hud-panel" aria-live="polite">
+          <summary class="panel-label">Artifacts <span id="artifact-count"></span></summary>
+          <div id="artifact-list"></div>
+        </details>
+        <details id="effect-panel" class="hud-panel hidden" aria-live="polite">
+          <summary id="effect-summary" class="panel-label">Active Effects</summary>
+          <div id="effect-list"></div>
+        </details>
+        <details id="risk-panel" class="hud-panel" aria-live="polite">
+          <summary class="panel-label">Curses & Pacts</summary>
+          <div id="risk-list"></div>
+        </details>
+        <div id="pickup-list" aria-live="polite"></div>
+      </div>
+      <div id="class-overlay">
+        <div class="boost-panel">
+          <h2>Sınıfını seç</h2>
+          <p>Build dalgalar boyunca kalır. Ulti her 3 dalgada güçlenir; çekirdek kartıyla da yükseltilebilir.</p>
+          <div id="class-cards"></div>
+        </div>
+      </div>
+      <div id="boost-overlay" class="hidden">
+        <div class="boost-panel">
+          <div class="panel-kicker">DECISION POINT 01</div>
+          <h2>Dalga tamamlandı</h2>
+          <p id="wave-brief">Bir boost seç. Sonraki dalganın tehdidine göre karar ver.</p>
+          <div id="wave-threats" class="threat-list"></div>
+          <div id="future-threats" class="future-threats"></div>
+          <div id="boost-cards"></div>
+          <section class="management-panel">
+            <h3>Build Management</h3>
+            <div id="upgrade-management"></div>
+            <div id="fusion-management"></div>
+          </section>
+          <div id="commitment-actions"></div>
+          <div id="temporary-actions"></div>
+          <div class="boost-actions">
+            <span id="reroll-count">Yeniden çekim: 0</span>
+            <button id="reroll-btn" type="button">Kartları yeniden çek</button>
+          </div>
+        </div>
+      </div>
+      <div id="route-overlay" class="hidden">
+        <div class="boost-panel">
+          <div class="panel-kicker">DECISION POINT 02</div>
+          <h2>Sonraki rotayı seç</h2>
+          <p>Risk ve ödülü birlikte değerlendir.</p>
+          <div id="route-cards"></div>
+          <div id="pact-actions"></div>
+        </div>
+      </div>
+      <div id="boss-overlay" class="hidden">
+        <div class="boost-panel">
+          <h2>Boss Core seç</h2>
+          <p>Mevcut build'ini güçlendir, fakat gelecekteki yönünü de belirle.</p>
+          <div id="boss-cards"></div>
+        </div>
+      </div>
+      <div id="event-overlay" class="hidden">
+        <div class="boost-panel">
+          <h2 id="event-title">Event</h2>
+          <p id="event-description"></p>
+          <div id="event-cards"></div>
+        </div>
+      </div>
+      <div id="shop-overlay" class="hidden">
+        <div class="boost-panel">
+          <div class="panel-kicker">RESOURCE DECISION</div>
+          <h2>Shop <span id="shop-balance"></span></h2>
+          <p>Gold'unu şimdi harca veya sonraki wave için sakla.</p>
+          <div id="shop-cards"></div>
+          <button id="leave-shop" type="button">Shop'tan ayrıl</button>
+        </div>
+      </div>
+      <div id="end-overlay" class="hidden">
+        <div class="boost-panel">
+          <h2 id="end-title">Kaybettin</h2>
+          <p id="end-body"></p>
+          <button id="restart-btn" type="button">Yeniden başla</button>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/web/main.ts"></script>
+  </body>
+</html>

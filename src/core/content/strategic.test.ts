@@ -1,0 +1,155 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import { buildWaves, getFutureWavePreviews } from "./catalog";
+import { bountiesForWave, canFuse, createRouteOptions, createShopInventory, eventById, FUSION_RECIPES, PACTS } from "./strategic";
+import { CLASSES } from "./classes";
+import { Simulation } from "../Simulation";
+
+test("fusion recipes consume duplicate ingredients without changing the catalog", () => {
+    assert.equal(canFuse(["firerate", "firerate"], FUSION_RECIPES[0]), true);
+    assert.equal(canFuse(["firerate"], FUSION_RECIPES[0]), false);
+});
+
+test("route options expose distinct risk and reward choices", () => {
+    const options = createRouteOptions(5);
+    assert.equal(options.length, 3);
+    assert.equal(new Set(options.map((option) => option.type)).size, 3);
+    assert.ok(options.some((option) => option.risk === 0));
+    assert.ok(options.some((option) => option.risk > 1));
+});
+
+test("every fourth generated wave is an elite forecast", () => {
+    const waves = buildWaves(8);
+    assert.equal(waves[3].elite, true);
+    assert.deepEqual(waves[3].modifiers, ["fast"]);
+    assert.equal(waves[4].elite, false);
+});
+
+test("future previews expose three decisions and mark distant waves uncertain", () => {
+    const previews = getFutureWavePreviews(9);
+    assert.equal(previews.length, 3);
+    assert.equal(previews[0].certainty, "known");
+    assert.equal(previews[2].certainty, "unknown");
+});
+
+test("events and shop inventory provide distinct strategic outcomes", () => {
+    const shrine = eventById("mysterious-shrine");
+    assert.equal(shrine?.choices.length, 3);
+    assert.ok(shrine?.choices.some((choice) => choice.effect.artifactId));
+    assert.equal(new Set(createShopInventory().map((item) => item.kind)).size, 4);
+});
+
+test("run save/load preserves strategic state", () => {
+    const source = new Simulation({ seed: 7, maxWaves: 6 });
+    source.selectClass("marksman");
+    source.state.gold = 42;
+    source.state.evolutionShards = 3;
+    source.state.artifacts.push("magnet");
+    const restored = new Simulation({ seed: 99, maxWaves: 6 });
+    assert.equal(restored.loadRun(source.saveRun()), true);
+    assert.equal(restored.state.classId, "marksman");
+    assert.equal(restored.state.gold, 42);
+    assert.deepEqual(restored.state.artifacts, ["magnet"]);
+    assert.equal(restored.loadRun("{}"), false);
+});
+
+test("earned gold can open the shop and purchase an item", () => {
+    const simulation = new Simulation({ seed: 3, maxWaves: 6 });
+    simulation.selectClass("marksman");
+    simulation.state.gold = 50;
+    simulation.state.phase = "route";
+    simulation.state.routeOptions = createRouteOptions(2);
+    const shop = simulation.state.routeOptions.find((node) => node.type === "shop");
+    assert.ok(shop);
+    assert.equal(simulation.selectRoute(shop.id), true);
+    assert.equal(simulation.state.phase, "shop");
+    assert.equal(simulation.buyShopItem("shop-reroll"), true);
+    assert.equal(simulation.state.gold, 20);
+    assert.equal(simulation.state.rerollTokens, 1);
+});
+
+test("elite bounty is only offered on elite waves", () => {
+    assert.equal(bountiesForWave(false).some((bounty) => bounty.target === "elite"), false);
+    assert.equal(bountiesForWave(true).some((bounty) => bounty.target === "elite"), true);
+});
+
+test("archetypes expose distinct gameplay passives", () => {
+    assert.deepEqual(CLASSES.map((cls) => cls.passive.id), ["berserker_rage", "deadeye", "elemental_attunement"]);
+    assert.equal(new Set(CLASSES.map((cls) => cls.passive.id)).size, CLASSES.length);
+});
+
+test("shop weighting prefers artifacts that match the current build", () => {
+    assert.equal(createShopInventory(["lifesteal"])[0].artifactId, "vampire_fang");
+    assert.equal(createShopInventory(["multishot"])[0].artifactId, "bullet_core");
+});
+
+test("anti-snowball limits remain bounded", () => {
+    const simulation = new Simulation({ seed: 4, maxWaves: 6 });
+    assert.equal(simulation.state.artifactSlots, 4);
+    assert.equal(PACTS.length > 0, true);
+    simulation.state.phase = "route";
+    assert.equal(simulation.choosePact(PACTS[0].id), true);
+    assert.equal(simulation.choosePact(PACTS[1].id), false);
+    assert.ok(createShopInventory().every((item) => item.price >= 20));
+});
+
+test("profile progression persists completed-run rewards", () => {
+    const source = new Simulation({ seed: 8, maxWaves: 6 });
+    source.profile.legacyShards = 7;
+    source.profile.runsCompleted = 2;
+    source.profile.bestWave = 4;
+    const restored = new Simulation({ seed: 9, maxWaves: 6 });
+    assert.equal(restored.loadProfile(source.saveProfile()), true);
+    assert.deepEqual(restored.profile, source.profile);
+    assert.equal(restored.loadProfile("{\"version\":2}"), false);
+});
+
+test("legacy shards grant a bounded starting reroll bonus", () => {
+    const simulation = new Simulation({ seed: 10, maxWaves: 6 });
+    simulation.profile.legacyShards = 15;
+    simulation.selectClass("vanguard");
+    assert.equal(simulation.state.rerollCharges, 3);
+});
+
+test("temporary timing bonuses are mutually exclusive", () => {
+    const simulation = new Simulation({ seed: 11, maxWaves: 6 });
+    simulation.selectClass("vanguard");
+    simulation.state.phase = "boost";
+    assert.equal(simulation.activateTemporaryEffect("overclock"), true);
+    assert.equal(simulation.activateTemporaryEffect("fortified"), false);
+    assert.equal(simulation.state.activeTemporaryEffects.length, 1);
+});
+
+test("Swarm Pact increases the next wave spawn count", () => {
+    const simulation = new Simulation({ seed: 12, maxWaves: 6 });
+    simulation.selectClass("marksman");
+    const base = new Simulation({ seed: 12, maxWaves: 6 });
+    base.selectClass("marksman");
+    base.state.phase = "route";
+    base.state.routeOptions = createRouteOptions(2);
+    assert.equal(base.selectRoute("combat-2-0"), true);
+    simulation.state.phase = "route";
+    simulation.state.routeOptions = createRouteOptions(2);
+    assert.equal(simulation.choosePact("swarm-pact"), true);
+    assert.equal(simulation.selectRoute("combat-2-0"), true);
+    assert.ok(simulation.state.pendingSpawns.length > base.state.pendingSpawns.length);
+});
+
+test("Pact completion grants its reward only once", () => {
+    const simulation = new Simulation({ seed: 13, maxWaves: 6 });
+    simulation.selectClass("marksman");
+    simulation.state.activePacts = ["blood-pact"];
+    simulation.state.pactRewardClaimed = false;
+    simulation.state.pendingSpawns = [];
+    simulation.state.enemies = [];
+    simulation.tick(0.01, { moveX: 0, moveY: 0, aimX: 0, aimY: 0, firing: false, ult: false });
+    assert.equal(simulation.state.pactRewardClaimed, true);
+    assert.equal(simulation.state.evolutionShards, 2);
+    const shards = simulation.state.evolutionShards;
+    simulation.state.phase = "combat";
+    simulation.state.pendingSpawns = [];
+    simulation.state.enemies = [];
+    simulation.tick(0.01, { moveX: 0, moveY: 0, aimX: 0, aimY: 0, firing: false, ult: false });
+    assert.equal(simulation.state.evolutionShards, shards);
+});
