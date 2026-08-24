@@ -11,7 +11,7 @@ import {
   getUpgradeOptions,
 } from "./content/catalog";
 import { classById, CLASSES, ULT_CORE_ID, ultPower } from "./content/classes";
-import { ARTIFACTS, bountiesForWave, BOSS_REWARDS, canFuse, commitmentById, FUSION_RECIPES, artifactById, createRouteOptions, createShopInventory, eventById, pactById, PACTS, temporaryEffectById } from "./content/strategic";
+import { ARTIFACTS, bountiesForWave, BOSS_REWARDS, canFuse, canFuseWithState, commitmentById, FUSION_RECIPES, artifactById, createRouteOptions, createShopInventory, eventById, pactById, PACTS, temporaryEffectById } from "./content/strategic";
 import { pickupById, WAVE_PICKUPS } from "./content/pickups";
 import { vec } from "./math/vec2";
 import { Rng } from "./rng";
@@ -224,6 +224,7 @@ export class Simulation {
       cues: [],
       appliedBoostIds: [],
       boostOffers: [],
+      recentBoostOffers: [],
       pendingSpawns: [],
       classId: null,
       ultCharge: 1,
@@ -254,6 +255,7 @@ export class Simulation {
       xp: 0,
       activeTemporaryEffects: [],
       activeBounty: null,
+      lastBountyResult: null,
       bossRewardOffers: [],
       activeEvent: null,
       curses: [],
@@ -298,6 +300,7 @@ export class Simulation {
     state.waveTime = 0;
     state.bountyFailed = false;
     state.bountyProgress = 0;
+    state.lastBountyResult = null;
     const bountyPool = bountiesForWave(state.eliteWave);
     state.activeBounty = bountyPool[this.rng.int(bountyPool.length)] ?? null;
     this.rebuildStats();
@@ -878,15 +881,18 @@ export class Simulation {
   private resolveBounty(): void {
     const { state } = this;
     const bounty = state.activeBounty;
-    if (!bounty || state.bountyFailed) return;
+    if (!bounty) return;
     const complete = bounty.target === "no_damage"
       || (bounty.target === "kills" && state.bountyProgress >= (bounty.amount ?? 0))
       || (bounty.target === "speed" && state.waveTime <= (bounty.amount ?? 0))
       || (bounty.target === "elite" && state.bountyProgress > 0);
-    if (!complete) return;
-    state.gold += bounty.reward.gold ?? 0;
-    state.rerollTokens += bounty.reward.rerollTokens ?? 0;
-    state.evolutionShards += bounty.reward.evolutionShards ?? 0;
+    const success = !state.bountyFailed && complete;
+    state.lastBountyResult = { bounty, success };
+    if (success) {
+      state.gold += bounty.reward.gold ?? 0;
+      state.rerollTokens += bounty.reward.rerollTokens ?? 0;
+      state.evolutionShards += bounty.reward.evolutionShards ?? 0;
+    }
     state.activeBounty = null;
   }
 
@@ -927,7 +933,9 @@ export class Simulation {
       OFFER_COUNT,
       excludedIds,
       this.state.committedBuild,
+      this.state.recentBoostOffers,
     );
+    this.state.recentBoostOffers = [...this.state.recentBoostOffers, ...offers.map((boost) => boost.id)].slice(-12);
     if (offers.length === OFFER_COUNT) return offers;
     const pool = availableBoosts(this.state.appliedBoostIds, this.state.waveIndex);
     const picked = [...offers];
@@ -973,15 +981,21 @@ export class Simulation {
   fuse(recipeId: string): boolean {
     const { state } = this;
     const recipe = FUSION_RECIPES.find((candidate) => candidate.id === recipeId);
-    if (state.phase !== "boost" || !recipe || state.evolutionShards < recipe.cost.evolutionShards) return false;
-    if (!canFuse(state.appliedBoostIds, recipe)) return false;
-    if (recipe.resultArtifactId && state.artifacts.length >= state.artifactSlots) return false;
+    if (state.phase !== "boost" || !recipe) return false;
+    if (!canFuseWithState(state.appliedBoostIds, recipe, state.evolutionShards, state.artifacts, state.artifactSlots)) return false;
+
+    const resultId = recipe.resultBoostId;
+    const keepResultStack = !!resultId && recipe.ingredients.includes(resultId);
     for (const ingredient of recipe.ingredients) {
+      if (keepResultStack && ingredient === resultId) continue;
       const index = state.appliedBoostIds.indexOf(ingredient);
-      state.appliedBoostIds.splice(index, 1);
+      if (index >= 0) state.appliedBoostIds.splice(index, 1);
     }
-    if (recipe.resultBoostId) state.appliedBoostIds.push(recipe.resultBoostId);
+    if (resultId) state.appliedBoostIds.push(resultId);
     if (recipe.resultArtifactId && !this.addArtifact(recipe.resultArtifactId)) return false;
+
+    const burnDamage = Math.max(6, Math.round(state.player.maxHp * 0.08));
+    state.player.hp = Math.max(1, state.player.hp - burnDamage);
     state.evolutionShards -= recipe.cost.evolutionShards;
     state.appliedFusionIds.push(recipe.id);
     this.rebuildStats();

@@ -26,9 +26,9 @@ export const ARTIFACTS: ArtifactDef[] = [
 ];
 
 export const FUSION_RECIPES: FusionRecipe[] = [
-    { id: "attack-speed-ii", ingredients: ["firerate", "firerate"], resultBoostId: "firerate", cost: { evolutionShards: 1 }, description: "Attack Speed I + Attack Speed I, geliştirilmiş bir tetik kartına dönüşür." },
-    { id: "fire-projectile", ingredients: ["fire_damage", "multishot"], resultArtifactId: "bullet_core", cost: { evolutionShards: 2 }, description: "Alev ve çoklu mermi, özel bir mermi çekirdeği üretir." },
-    { id: "inferno", ingredients: ["burn_duration", "burn_spread"], resultBoostId: "burn_spread", cost: { evolutionShards: 3 }, description: "Yanma süresi ve yayılımı Inferno ilerlemesini tamamlar." },
+    { id: "attack-speed-ii", ingredients: ["firerate", "firerate"], resultBoostId: "firerate", cost: { evolutionShards: 1 }, description: "Attack Speed I + Attack Speed I, üst seviye kart olarak stacklenir; fakat bu işlem için hafif bir yanma bedeli ödersin." },
+    { id: "fire-projectile", ingredients: ["fire_damage", "multishot"], resultArtifactId: "bullet_core", cost: { evolutionShards: 2 }, description: "Alev ve çoklu mermi, özel bir mermi çekirdeği üretir; fusion sırasında canın yanar." },
+    { id: "inferno", ingredients: ["burn_duration", "burn_spread"], resultBoostId: "burn_spread", cost: { evolutionShards: 3 }, description: "Yanma süresi ve yayılımı üst seviye bir burn spread olarak stacklenir; tradeoff: can kaybı." },
 ];
 
 export const PACTS: PactDef[] = [
@@ -123,13 +123,13 @@ export const ENEMY_MODIFIERS: Record<EnemyModifierId, { label: string; descripti
 };
 
 const ROUTE_TYPES: Array<{ type: NodeType; label: string; description: string; risk: number; reward: string }> = [
-    { type: "combat", label: "Normal Combat", description: "Dengeli bir sonraki dalga.", risk: 1, reward: "Upgrade" },
-    { type: "elite", label: "Elite", description: "Modifier'lı zor dalga.", risk: 3, reward: "Rare+ / Shard" },
-    { type: "event", label: "Event", description: "Belirsiz ama anlamlı bir encounter.", risk: 0, reward: "Choice" },
-    { type: "shop", label: "Shop", description: "Gold ile build'ini düzenle.", risk: 0, reward: "Economy" },
-    { type: "treasure", label: "Treasure", description: "Artifact bul.", risk: 1, reward: "Artifact" },
-    { type: "rest", label: "Rest", description: "İyileş veya upgrade yönet.", risk: 0, reward: "Heal / Remove" },
-    { type: "challenge", label: "Challenge", description: "Ek risk karşılığında özel ödül.", risk: 4, reward: "Legendary choice" },
+    { type: "combat", label: "Normal Combat", description: "This is a standard combat wave. The next wave is a normal fight, with no heal or shop bonus before the usual upgrade screen.", risk: 1, reward: "Upgrade" },
+    { type: "elite", label: "Elite", description: "Next wave is elite and harder, with stronger enemy modifiers and better risk/reward potential.", risk: 3, reward: "Rare+ / Shard" },
+    { type: "event", label: "Event", description: "No fight yet. You resolve a story choice that may help or hurt your build.", risk: 0, reward: "Choice" },
+    { type: "shop", label: "Shop", description: "No combat. You can spend gold on upgrades, rerolls, or healing instead of fighting immediately.", risk: 0, reward: "Economy" },
+    { type: "treasure", label: "Treasure", description: "No combat. You gain the Magnet artifact immediately before the next battle.", risk: 1, reward: "Artifact" },
+    { type: "rest", label: "Rest", description: "No combat. Restores 35% of max HP and makes the next wave easier to survive.", risk: 0, reward: "Heal / Remove" },
+    { type: "challenge", label: "Challenge", description: "Higher danger, but a bigger reward if you survive the next push.", risk: 4, reward: "Legendary choice" },
 ];
 
 export function createRouteOptions(waveIndex: number): RouteNode[] {
@@ -164,4 +164,31 @@ export function canFuse(appliedIds: string[], recipe: FusionRecipe): boolean {
         available.splice(index, 1);
         return true;
     });
+}
+
+export function missingFusionIngredients(appliedIds: string[], recipe: FusionRecipe): string[] {
+    const available = [...appliedIds];
+    const missing: string[] = [];
+    for (const ingredient of recipe.ingredients) {
+        const index = available.indexOf(ingredient);
+        if (index < 0) {
+            missing.push(ingredient);
+            continue;
+        }
+        available.splice(index, 1);
+    }
+    return missing;
+}
+
+export function canFuseWithState(
+    appliedIds: string[],
+    recipe: FusionRecipe,
+    evolutionShards: number,
+    artifactIds: string[] = [],
+    artifactSlotLimit = 4,
+): boolean {
+    if (evolutionShards < recipe.cost.evolutionShards) return false;
+    if (!canFuse(appliedIds, recipe)) return false;
+    if (recipe.resultArtifactId && artifactIds.length >= artifactSlotLimit) return false;
+    return true;
 }

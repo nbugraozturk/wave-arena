@@ -409,6 +409,7 @@ export interface GameState {
   cues: AudioCue[];
   appliedBoostIds: string[];
   boostOffers: BoostDef[];
+  recentBoostOffers: string[];
   pendingSpawns: { defId: string; modifiers?: EnemyModifierId[] }[];
   classId: ClassId | null;
   ultCharge: number;
@@ -439,6 +440,7 @@ export interface GameState {
   xp: number;
   activeTemporaryEffects: TemporaryEffect[];
   activeBounty: BountyDef | null;
+  lastBountyResult: { bounty: BountyDef; success: boolean } | null;
   bossRewardOffers: BossRewardDef[];
   activeEvent: EventDef | null;
   curses: string[];

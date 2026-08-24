@@ -1,7 +1,7 @@
 import { classById, CLASSES, ultLevel } from "../core/content/classes";
 import { getBuildSummary, getFutureWavePreviews, getWavePreview } from "../core/content/catalog";
 import { pickupById } from "../core/content/pickups";
-import { artifactById, canFuse, COMMITMENTS, FUSION_RECIPES, PACTS, TEMPORARY_EFFECTS } from "../core/content/strategic";
+import { artifactById, canFuseWithState, COMMITMENTS, FUSION_RECIPES, missingFusionIngredients, PACTS, TEMPORARY_EFFECTS } from "../core/content/strategic";
 import { BOOSTS } from "../core/content/catalog";
 import { Simulation } from "../core/Simulation";
 import { CanvasView } from "./CanvasView";
@@ -24,6 +24,7 @@ const goldValue = document.querySelector("#gold-value")!;
 const shardValue = document.querySelector("#shard-value")!;
 const rerollValue = document.querySelector("#reroll-value")!;
 const bountyLine = document.querySelector<HTMLDivElement>("#bounty-line")!;
+const bountyResult = document.querySelector<HTMLDivElement>("#bounty-result")!;
 const ultFill = document.querySelector<HTMLDivElement>("#ult-fill")!;
 const ultHint = document.querySelector("#ult-hint")!;
 const buildPanel = document.querySelector<HTMLDetailsElement>("#build-panel")!;
@@ -151,6 +152,22 @@ function frame(now: number): void {
 
 function syncHud(): void {
   const { state } = sim;
+  if (state.lastBountyResult) {
+    const { bounty, success } = state.lastBountyResult;
+    const reward = !success
+      ? "Ödül yok"
+      : [
+        bounty.reward.gold ? `+${bounty.reward.gold} Gold` : "",
+        bounty.reward.rerollTokens ? `+${bounty.reward.rerollTokens} Reroll` : "",
+        bounty.reward.evolutionShards ? `+${bounty.reward.evolutionShards} Shard` : "",
+      ].filter(Boolean).join(" · ");
+    bountyResult.className = `bounty-result ${success ? "success" : "failed"}`;
+    bountyResult.textContent = success
+      ? `Bounty başarılı · ${bounty.name} · ${reward || "Tamamlandı"}`
+      : `Bounty başarısız · ${bounty.name} · ${reward}`;
+  } else {
+    bountyResult.className = "hidden";
+  }
   waveLabel.textContent = state.waveIndex > 0 ? `Dalga ${state.waveIndex}` : "Hazırlık";
   killsLabel.textContent = `${state.kills} öldürme`;
   combatStatus.textContent = state.eliteWave ? "ELITE WAVE · YÜKSEK RİSK" : state.phase === "combat" ? "COMBAT · TEHDİT ANALİZİ" : "RUN CONTROL";
@@ -378,15 +395,35 @@ function syncHud(): void {
       fusionManagement.append(fusionLabel);
       for (const recipe of FUSION_RECIPES) {
         const row = document.createElement("div");
-        row.className = "management-row";
-        const text = document.createElement("span");
-        text.textContent = `${recipe.ingredients.join(" + ")} → ${recipe.resultArtifactId ?? recipe.resultBoostId} · ${recipe.cost.evolutionShards}S`;
+        row.className = "management-row fusion-row";
+        const info = document.createElement("div");
+        info.className = "fusion-info";
+        const recipeText = document.createElement("div");
+        recipeText.className = "fusion-recipe";
+        const statusText = document.createElement("div");
+        const missing = missingFusionIngredients(state.appliedBoostIds, recipe);
+        const readiness = canFuseWithState(state.appliedBoostIds, recipe, state.evolutionShards, state.artifacts, state.artifactSlots);
+        const tradeoffText = `Tradeoff: burns ${Math.max(6, Math.round(state.player.maxHp * 0.08))} HP`;
+        const missingSummary = missing.length > 0
+          ? `Need: ${missing.join(" + ")}`
+          : "Ready";
+        const extraState = !readiness && missing.length === 0
+          ? (recipe.resultArtifactId && state.artifacts.length >= state.artifactSlots ? "Artifact slots full" : "Not enough shards")
+          : "";
+
+        recipeText.textContent = `${recipe.ingredients.join(" + ")} → ${recipe.resultArtifactId ?? recipe.resultBoostId} · ${recipe.cost.evolutionShards}S`;
+        statusText.className = `fusion-note ${readiness ? "ready" : missing.length > 0 ? "missing" : "blocked"}`;
+        statusText.textContent = readiness ? `${tradeoffText} · Stack` : extraState ? `${extraState} · ${tradeoffText}` : `${missingSummary} · ${tradeoffText}`;
+
+        info.append(recipeText, statusText);
         const fuse = document.createElement("button");
         fuse.type = "button";
-        fuse.textContent = "Fuse";
-        fuse.disabled = !canFuse(state.appliedBoostIds, recipe) || state.evolutionShards < recipe.cost.evolutionShards;
+        fuse.className = "fusion-action";
+        fuse.textContent = readiness ? "Fuse" : "Need";
+        fuse.disabled = !readiness;
+        fuse.setAttribute("title", readiness ? "Fuse this recipe" : missing.length > 0 ? `Missing ingredients: ${missing.join(", ")}` : `Insufficient shards or artifact slots`);
         fuse.addEventListener("click", () => sim.fuse(recipe.id));
-        row.append(text, fuse);
+        row.append(info, fuse);
         fusionManagement.append(row);
       }
       commitmentActions.replaceChildren();

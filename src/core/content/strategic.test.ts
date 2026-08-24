@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { buildWaves, getFutureWavePreviews } from "./catalog";
-import { bountiesForWave, canFuse, createRouteOptions, createShopInventory, eventById, FUSION_RECIPES, PACTS } from "./strategic";
+import { bountiesForWave, canFuse, canFuseWithState, createRouteOptions, createShopInventory, eventById, FUSION_RECIPES, missingFusionIngredients, PACTS } from "./strategic";
 import { CLASSES } from "./classes";
 import { Simulation } from "../Simulation";
 
@@ -12,11 +12,15 @@ test("fusion recipes consume duplicate ingredients without changing the catalog"
 });
 
 test("route options expose distinct risk and reward choices", () => {
-    const options = createRouteOptions(5);
+    const options = createRouteOptions(6);
     assert.equal(options.length, 3);
     assert.equal(new Set(options.map((option) => option.type)).size, 3);
     assert.ok(options.some((option) => option.risk === 0));
-    assert.ok(options.some((option) => option.risk > 1));
+    assert.ok(options.some((option) => option.risk >= 1));
+    const rest = options.find((option) => option.type === "rest");
+    const combat = options.find((option) => option.type === "combat");
+    assert.ok(rest && /35%|heals|restore/i.test(rest.description));
+    assert.ok(combat && /standard|next wave|dengeli/i.test(combat.description));
 });
 
 test("every fourth generated wave is an elite forecast", () => {
@@ -92,6 +96,30 @@ test("anti-snowball limits remain bounded", () => {
     assert.equal(simulation.choosePact(PACTS[0].id), true);
     assert.equal(simulation.choosePact(PACTS[1].id), false);
     assert.ok(createShopInventory().every((item) => item.price >= 20));
+});
+
+test("fusion availability includes shard count and artifact capacity in one check", () => {
+    const recipe = FUSION_RECIPES[1];
+    assert.equal(canFuseWithState(["fire_damage", "multishot"], recipe, 2, ["magnet"], 4), true);
+    assert.equal(canFuseWithState(["fire_damage", "multishot"], recipe, 1, ["magnet"], 4), false);
+    assert.equal(canFuseWithState(["fire_damage", "multishot"], recipe, 2, ["magnet", "vampire_fang", "cursed_skull", "bullet_core"], 4), false);
+    assert.equal(canFuseWithState(["fire_damage"], recipe, 2, ["magnet"], 4), false);
+    assert.deepEqual(missingFusionIngredients(["fire_damage"], recipe), ["multishot"]);
+    assert.deepEqual(missingFusionIngredients(["fire_damage", "multishot"], recipe), []);
+});
+
+test("fusion stacks the result card instead of replacing it, with a burn tradeoff", () => {
+    const simulation = new Simulation({ seed: 99, maxWaves: 6 });
+    simulation.selectClass("marksman");
+    simulation.state.phase = "boost";
+    simulation.state.evolutionShards = 3;
+    simulation.state.appliedBoostIds = ["burn_duration", "burn_spread"];
+    const beforeHp = simulation.state.player.hp;
+
+    assert.equal(simulation.fuse("inferno"), true);
+    assert.equal(simulation.state.appliedBoostIds.filter((id) => id === "burn_spread").length, 2);
+    assert.ok(simulation.state.appliedBoostIds.includes("burn_duration") === false, "burn_duration should be consumed");
+    assert.ok(simulation.state.player.hp < beforeHp, "fusion should burn a little health as its tradeoff");
 });
 
 test("profile progression persists completed-run rewards", () => {

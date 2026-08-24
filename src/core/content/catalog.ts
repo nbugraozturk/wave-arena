@@ -716,8 +716,12 @@ export function getUpgradeOptions(
   count = 3,
   excludedIds: string[] = [],
   commitmentId: string | null = null,
+  recentIds: string[] = [],
 ): BoostDef[] {
   const excluded = new Set(excludedIds);
+  const recentCounts = new Map<string, number>();
+  for (const id of recentIds) recentCounts.set(id, (recentCounts.get(id) ?? 0) + 1);
+
   const pool = availableBoosts(appliedIds, waveIndex).filter((boost) => !excluded.has(boost.id));
   const summary = getBuildSummary(appliedIds);
   const ranked = pool
@@ -730,6 +734,14 @@ export function getUpgradeOptions(
       if (boost.evolution && summary.evolutions.includes(boost.evolution)) weight *= 1.4;
       if (boost.risk && summary.activeSynergies.length > 0) weight *= 0.85;
       if (boost.antiSynergy?.some((tag) => summary.activeSynergies.includes(tag))) weight *= 0.6;
+
+      const recentHits = recentCounts.get(boost.id) ?? 0;
+      if (recentHits > 0) {
+        weight *= 0.42 ** recentHits;
+      } else {
+        weight *= 1.15;
+      }
+
       return { boost, weight };
     })
     .sort((a, b) => b.weight - a.weight);

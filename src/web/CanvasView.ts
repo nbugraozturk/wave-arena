@@ -28,8 +28,9 @@ export class CanvasView {
     const h = canvas.clientHeight;
     const { scale, ox, oy } = viewLayout(w, h);
     const cam = cameraOrigin(state.player.position);
-    const shakeX = Math.sin(state.time * 77) * state.shake;
-    const shakeY = Math.cos(state.time * 63) * state.shake;
+    const shakeStrength = state.shake * 0.5;
+    const shakeX = Math.sin(state.time * 77) * shakeStrength;
+    const shakeY = Math.cos(state.time * 63) * shakeStrength;
 
     ctx.fillStyle = "#0b0d12";
     ctx.fillRect(0, 0, w, h);
