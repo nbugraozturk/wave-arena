@@ -1,5 +1,7 @@
 import { classById, CLASSES, ultLevel } from "../core/content/classes";
-import { getBuildSummary, getFutureWavePreviews, getWavePreview } from "../core/content/catalog";
+import { getBuildSummary, getFutureWavePreviews, getWavePreview, getXpRequiredForLevel } from "../core/content/catalog";
+import { buildDailyChallenge, buildWeeklyChallenge, getMutatorById } from "../core/content/mutators";
+import { ACHIEVEMENTS } from "../core/content/achievements";
 import { pickupById } from "../core/content/pickups";
 import { artifactById, canFuseWithState, COMMITMENTS, FUSION_RECIPES, missingFusionIngredients, PACTS, TEMPORARY_EFFECTS } from "../core/content/strategic";
 import { BOOSTS } from "../core/content/catalog";
@@ -16,6 +18,9 @@ const waveProgressFill = document.querySelector<HTMLDivElement>("#wave-progress-
 const hpValue = document.querySelector("#hp-value")!;
 const hpFill = document.querySelector<HTMLDivElement>("#hp-fill")!;
 const hpGhost = document.querySelector<HTMLDivElement>("#hp-ghost")!;
+const xpValue = document.querySelector("#xp-value")!;
+const xpFill = document.querySelector<HTMLDivElement>("#xp-fill")!;
+const levelLine = document.querySelector("#level-line")!;
 const shieldLine = document.querySelector<HTMLDivElement>("#shield-line")!;
 const shieldValue = document.querySelector("#shield-value")!;
 const classLine = document.querySelector("#class-line")!;
@@ -38,6 +43,11 @@ const effectSummary = document.querySelector("#effect-summary")!;
 const effectList = document.querySelector<HTMLDivElement>("#effect-list")!;
 const riskPanel = document.querySelector<HTMLDetailsElement>("#risk-panel")!;
 const riskList = document.querySelector<HTMLDivElement>("#risk-list")!;
+const challengePanel = document.querySelector<HTMLDetailsElement>("#challenge-panel")!;
+const challengeSummary = document.querySelector("#challenge-summary")!;
+const challengeList = document.querySelector<HTMLDivElement>("#challenge-list")!;
+const achievementSummary = document.querySelector("#achievement-summary")!;
+const achievementList = document.querySelector<HTMLDivElement>("#achievement-list")!;
 const pickupList = document.querySelector<HTMLDivElement>("#pickup-list")!;
 const classOverlay = document.querySelector("#class-overlay")!;
 const classCards = document.querySelector("#class-cards")!;
@@ -69,6 +79,8 @@ const endOverlay = document.querySelector("#end-overlay")!;
 const endTitle = document.querySelector("#end-title")!;
 const endBody = document.querySelector("#end-body")!;
 const restartBtn = document.querySelector("#restart-btn")!;
+const dailyChallengeBtn = document.querySelector<HTMLButtonElement>("#daily-challenge-btn")!;
+const weeklyChallengeBtn = document.querySelector<HTMLButtonElement>("#weekly-challenge-btn")!;
 
 function boostIcon(boost: (typeof BOOSTS)[number]): string {
   const icons: Record<string, string> = { attack: "A", defense: "D", control: "C", economy: "E", weapon: "W", body: "B", tactic: "T", ult: "U" };
@@ -114,13 +126,49 @@ function boostImpact(boost: (typeof BOOSTS)[number]): string {
   return [...entries, ...additions].slice(0, 2).join(" · ") || "Build etkisi";
 }
 
-const sim = new Simulation({ seed: 42, maxWaves: 12 });
+let sim = new Simulation({ seed: 42, maxWaves: 12 });
 const savedProfile = localStorage.getItem("wave-arena-profile");
 if (savedProfile) sim.loadProfile(savedProfile);
 const view = new CanvasView(canvas);
 const input = new InputAdapter(canvas);
 const sfx = new Sfx();
 window.addEventListener("pointerdown", () => sfx.unlock(), { once: true });
+
+function updateChallengeButtons(): void {
+  const dailyActive = sim.state.challengeMode === "daily";
+  const weeklyActive = sim.state.challengeMode === "weekly";
+  dailyChallengeBtn.classList.toggle("active-run-mode", dailyActive);
+  dailyChallengeBtn.setAttribute("aria-pressed", String(dailyActive));
+  dailyChallengeBtn.textContent = dailyActive ? "Günlük challenge aktif · Kapat" : "Günlük challenge başlat";
+  weeklyChallengeBtn.classList.toggle("active-run-mode", weeklyActive);
+  weeklyChallengeBtn.setAttribute("aria-pressed", String(weeklyActive));
+  weeklyChallengeBtn.textContent = weeklyActive ? "Haftalık challenge aktif · Kapat" : "Haftalık challenge başlat";
+}
+
+function replaceRun(next: Simulation): void {
+  const profile = sim.saveProfile();
+  sim = next;
+  sim.loadProfile(profile);
+  lastBoostKey = "";
+  lastEndPhase = "";
+  updateChallengeButtons();
+}
+
+function toggleChallenge(mode: "daily" | "weekly"): void {
+  if (sim.state.phase !== "class_select") return;
+  if (sim.state.challengeMode === mode) {
+    replaceRun(new Simulation({ seed: 42, maxWaves: 12 }));
+    return;
+  }
+  const dateKey = new Date().toISOString().slice(0, 10);
+  if (mode === "daily") {
+    const challenge = buildDailyChallenge(dateKey);
+    replaceRun(new Simulation({ seed: challenge.seed, maxWaves: 30, mutators: challenge.mutators, dailyChallenge: challenge }));
+  } else {
+    const challenge = buildWeeklyChallenge(dateKey);
+    replaceRun(new Simulation({ seed: challenge.seed, maxWaves: 40, mutators: challenge.mutators, dailyChallenge: challenge }));
+  }
+}
 
 for (const cls of CLASSES) {
   const button = document.createElement("button");
@@ -152,6 +200,7 @@ function frame(now: number): void {
 
 function syncHud(): void {
   const { state } = sim;
+  updateChallengeButtons();
   if (state.lastBountyResult) {
     const { bounty, success } = state.lastBountyResult;
     const reward = !success
@@ -178,6 +227,11 @@ function syncHud(): void {
   const waveProgress = waveTotal > 0 ? Math.min(1, Math.max(0, 1 - waveRemaining / waveTotal)) : 0;
   waveProgressLabel.textContent = `${Math.max(0, waveTotal - waveRemaining)} / ${waveTotal}`;
   waveProgressFill.style.width = `${waveProgress * 100}%`;
+  const xpRequired = Math.max(1, sim.state.level > 0 ? Math.max(100, getXpRequiredForLevel(state.level)) : 100);
+  const xpRatio = Math.min(1, Math.max(0, state.xp / xpRequired));
+  xpValue.textContent = `${Math.floor(state.xp)} / ${xpRequired}`;
+  xpFill.style.width = `${xpRatio * 100}%`;
+  levelLine.textContent = `Level ${state.level}`;
   const hp = state.player.maxHp <= 0 ? 0 : state.player.hp / state.player.maxHp;
   hpValue.textContent = `${Math.ceil(Math.max(0, state.player.hp))} / ${Math.ceil(state.player.maxHp)}`;
   if (hp < lastHpRatio) {
@@ -282,6 +336,35 @@ function syncHud(): void {
     riskList.append(item);
   }
   riskPanel.classList.toggle("hidden", riskList.childElementCount === 0);
+
+  challengeList.replaceChildren();
+  if (state.challenge) {
+    challengeSummary.innerHTML = `${state.challenge.mode === "weekly" ? "Weekly" : "Daily"} Challenge <span>${state.challenge.date}</span>`;
+    const mode = document.createElement("div");
+    mode.className = "challenge-mode-label";
+    mode.textContent = `${state.challenge.character} · Goal: ${state.challenge.goal}`;
+    challengeList.append(mode);
+    for (const mutatorId of state.mutators) {
+      const mutator = getMutatorById(mutatorId);
+      const item = document.createElement("div");
+      item.className = "challenge-item";
+      item.textContent = mutator ? `${mutator.name} · ${mutator.description}` : mutatorId;
+      challengeList.append(item);
+    }
+    challengePanel.classList.remove("hidden");
+  } else {
+    challengePanel.classList.add("hidden");
+  }
+
+  achievementList.replaceChildren();
+  for (const achievement of ACHIEVEMENTS) {
+    const item = document.createElement("div");
+    const unlocked = sim.profile.achievements.includes(achievement.id);
+    item.className = `achievement-item${unlocked ? " unlocked" : " locked"}`;
+    item.textContent = `${unlocked ? "UNLOCKED" : "LOCKED"} · ${achievement.name} · ${achievement.description}`;
+    achievementList.append(item);
+  }
+  achievementSummary.innerHTML = `Achievements <span>${sim.profile.achievements.length}/${ACHIEVEMENTS.length}</span>`;
 
   pickupList.replaceChildren();
   for (const pickupId of state.wavePickupIds) {
@@ -594,7 +677,7 @@ function syncHud(): void {
       localStorage.setItem("wave-arena-profile", sim.saveProfile());
       endTitle.textContent = state.phase === "victory" ? "Kazandın" : "Kaybettin";
       const clsName = state.classId ? classById(state.classId).name : "-";
-      endBody.textContent = `${clsName} · Dalga ${state.waveIndex} · ${state.kills} öldürme · ulti sv.${ultLevel(state.waveIndex, state.ultBonusLevel)}`;
+      endBody.textContent = `${clsName} · Dalga ${state.waveIndex} · ${state.kills} öldürme · ulti sv.${ultLevel(state.waveIndex, state.ultBonusLevel)} · Başarımlar ${sim.profile.achievements.length}`;
     }
     endOverlay.classList.remove("hidden");
   } else {
@@ -607,6 +690,14 @@ restartBtn.addEventListener("click", () => {
   sim.reset();
   lastBoostKey = "";
   lastEndPhase = "";
+});
+
+dailyChallengeBtn.addEventListener("click", () => {
+  toggleChallenge("daily");
+});
+
+weeklyChallengeBtn.addEventListener("click", () => {
+  toggleChallenge("weekly");
 });
 
 rerollBtn.addEventListener("click", () => sim.rerollBoosts());

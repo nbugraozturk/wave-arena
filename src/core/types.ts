@@ -143,6 +143,7 @@ export interface ProfileState {
   runsCompleted: number;
   bestWave: number;
   unlockedClasses: ClassId[];
+  achievements: string[];
 }
 
 export interface FusionRecipe {
@@ -386,11 +387,25 @@ export interface WavePickup {
 export interface GameConfig {
   seed: number;
   maxWaves: number;
+  mutators?: string[];
+  dailyChallenge?: {
+    id: string;
+    mode: "daily" | "weekly";
+    date: string;
+    character: string;
+    seed: number;
+    mutators: string[];
+    difficulty: number;
+    rules: string[];
+    goal: string;
+  };
 }
 
 export interface GameState {
   phase: GamePhase;
   time: number;
+  level: number;
+  pendingLevelUps: number;
   waveIndex: number;
   kills: number;
   remainingToSpawn: number;
@@ -451,4 +466,7 @@ export interface GameState {
   waveTime: number;
   eliteWave: boolean;
   artifactCounters: Record<string, number>;
+  mutators: string[];
+  challengeMode: "normal" | "daily" | "weekly";
+  challenge: GameConfig["dailyChallenge"] | null;
 }

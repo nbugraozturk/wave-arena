@@ -133,6 +133,18 @@ test("profile progression persists completed-run rewards", () => {
     assert.equal(restored.loadProfile("{\"version\":2}"), false);
 });
 
+test("profile achievement progress is backward compatible and filtered", () => {
+    const source = new Simulation({ seed: 8, maxWaves: 6 });
+    source.profile.achievements = ["first_run", "unknown-achievement"];
+    const restored = new Simulation({ seed: 9, maxWaves: 6 });
+    assert.equal(restored.loadProfile(source.saveProfile()), true);
+    assert.deepEqual(restored.profile.achievements, ["first_run"]);
+
+    const legacy = JSON.stringify({ version: 1, legacyShards: 2, runsCompleted: 1, bestWave: 2, unlockedClasses: ["vanguard"] });
+    assert.equal(restored.loadProfile(legacy), true);
+    assert.deepEqual(restored.profile.achievements, []);
+});
+
 test("legacy shards grant a bounded starting reroll bonus", () => {
     const simulation = new Simulation({ seed: 10, maxWaves: 6 });
     simulation.profile.legacyShards = 15;
@@ -162,6 +174,19 @@ test("Swarm Pact increases the next wave spawn count", () => {
     assert.equal(simulation.choosePact("swarm-pact"), true);
     assert.equal(simulation.selectRoute("combat-2-0"), true);
     assert.ok(simulation.state.pendingSpawns.length > base.state.pendingSpawns.length);
+});
+
+test("wave spawning recovers when the frame timer becomes invalid", () => {
+    const simulation = new Simulation({ seed: 13, maxWaves: 6 });
+    simulation.selectClass("marksman");
+    simulation.state.waveIndex = 6;
+    simulation.state.phase = "combat";
+    (simulation as any).hydrateWave(simulation.state, 6);
+    const before = simulation.state.pendingSpawns.length;
+    simulation.state.spawnCooldown = Number.NaN;
+    simulation.tick(Number.NaN, { moveX: 0, moveY: 0, aimX: 1440, aimY: 810, firing: false, ult: false });
+    assert.equal(simulation.state.pendingSpawns.length, before - 1);
+    assert.equal(Number.isFinite(simulation.state.spawnCooldown), true);
 });
 
 test("Pact completion grants its reward only once", () => {

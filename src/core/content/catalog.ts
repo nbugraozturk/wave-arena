@@ -57,6 +57,12 @@ const EVOLUTION_LIBRARY = {
   tyrant: { label: "Tyrant", threshold: 3 },
 } as const;
 
+export function getXpRequiredForLevel(level: number): number {
+  const safeLevel = Math.max(1, Math.floor(level));
+  if (safeLevel === 1) return 100;
+  return Math.round(100 + (safeLevel - 1) * 50 + Math.max(0, safeLevel - 2) * 20);
+}
+
 export const BOOSTS: BoostDef[] = [
   {
     id: "damage",
@@ -764,4 +770,20 @@ export function getUpgradeOptions(
   }
 
   return picks.slice(0, count);
+}
+
+export type MutatorRuntimeConfig = {
+  id: string;
+  name: string;
+  description: string;
+  difficulty: string;
+  modifiers: Record<string, number>;
+};
+
+export function getRuntimeMutators(): MutatorRuntimeConfig[] {
+  return [
+    { id: "vampire_night", name: "Vampire Night", description: "Enemy speed +20%; lifesteal +100%.", difficulty: "medium", modifiers: { enemySpeedMultiplier: 1.2, lifestealMultiplier: 2 } },
+    { id: "glass_world", name: "Glass World", description: "Player HP -50%; damage +75%.", difficulty: "high", modifiers: { playerHpMultiplier: 0.5, playerDamageMultiplier: 1.75 } },
+    { id: "endless_horde", name: "Endless Horde", description: "Enemy count +100%; XP gain +150%.", difficulty: "high", modifiers: { enemyCountMultiplier: 2, xpMultiplier: 1.5 } },
+  ];
 }

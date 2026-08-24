@@ -19,8 +19,11 @@
         <div id="wave-progress"><div id="wave-progress-fill"></div></div>
         <div class="progress-caption health-caption"><span>HULL</span><span id="hp-value">100 / 100</span></div>
         <div id="hp-bar"><div id="hp-ghost"></div><div id="hp-fill"></div></div>
+        <div class="progress-caption xp-caption"><span>XP</span><span id="xp-value">0 / 100</span></div>
+        <div id="xp-bar"><div id="xp-fill"></div></div>
         <div id="shield-line" class="hidden"><span>SHIELD</span><strong id="shield-value">0</strong></div>
         <p id="hint">WASD hareket · Fare nişan · Sol tık ateş · Q ulti</p>
+        <div id="level-line">Level 1</div>
         <div id="class-line">Sınıf seç</div>
         <div id="resource-line" class="resource-display">
           <span><b class="resource-icon gold-icon">G</b><strong id="gold-value">0</strong><small>GOLD</small></span>
@@ -46,6 +49,14 @@
           <summary class="panel-label">Curses & Pacts</summary>
           <div id="risk-list"></div>
         </details>
+        <details id="challenge-panel" class="hud-panel hidden" aria-live="polite">
+          <summary id="challenge-summary" class="panel-label">Challenge</summary>
+          <div id="challenge-list"></div>
+        </details>
+        <details id="achievement-panel" class="hud-panel" aria-live="polite">
+          <summary id="achievement-summary" class="panel-label">Achievements</summary>
+          <div id="achievement-list"></div>
+        </details>
         <div id="pickup-list" aria-live="polite"></div>
       </div>
       <div id="bounty-result" class="hidden" aria-live="polite"></div>
@@ -53,6 +64,10 @@
         <div class="boost-panel">
           <h2>Sınıfını seç</h2>
           <p>Build dalgalar boyunca kalır. Ulti her 3 dalgada güçlenir; çekirdek kartıyla da yükseltilebilir.</p>
+          <div class="run-mode-actions">
+            <button id="daily-challenge-btn" type="button">Günlük challenge başlat</button>
+            <button id="weekly-challenge-btn" type="button">Haftalık challenge başlat</button>
+          </div>
           <div id="class-cards"></div>
         </div>
       </div>

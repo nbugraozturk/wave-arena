@@ -9,7 +9,10 @@ import {
   buildWaves,
   ENEMIES,
   getUpgradeOptions,
+  getXpRequiredForLevel,
 } from "./content/catalog";
+import { getMutatorById } from "./content/mutators";
+import { ACHIEVEMENTS } from "./content/achievements";
 import { classById, CLASSES, ULT_CORE_ID, ultPower } from "./content/classes";
 import { ARTIFACTS, bountiesForWave, BOSS_REWARDS, canFuse, canFuseWithState, commitmentById, FUSION_RECIPES, artifactById, createRouteOptions, createShopInventory, eventById, pactById, PACTS, temporaryEffectById } from "./content/strategic";
 import { pickupById, WAVE_PICKUPS } from "./content/pickups";
@@ -75,6 +78,9 @@ export class Simulation {
         runsCompleted: Math.max(0, Math.floor(profile.runsCompleted)),
         bestWave: Math.max(0, Math.floor(profile.bestWave)),
         unlockedClasses: profile.unlockedClasses.filter((id): id is ClassId => CLASSES.some((cls) => cls.id === id)),
+        achievements: Array.isArray(profile.achievements)
+          ? profile.achievements.filter((id) => ACHIEVEMENTS.some((achievement) => achievement.id === id))
+          : [],
       };
       return true;
     } catch {
@@ -83,15 +89,22 @@ export class Simulation {
   }
 
   saveRun(): string {
-    return JSON.stringify({ version: 1, state: this.state, rngState: this.rng.snapshot(), contactTimer: this.contactTimer });
+    return JSON.stringify({ version: 2, state: this.state, rngState: this.rng.snapshot(), contactTimer: this.contactTimer });
   }
 
   loadRun(serialized: string): boolean {
     try {
       const payload = JSON.parse(serialized) as { version?: number; state?: GameState; rngState?: number; contactTimer?: number };
-      if (payload.version !== 1 || !payload.state || typeof payload.rngState !== "number") return false;
-      if (!payload.state.phase || !Array.isArray(payload.state.appliedBoostIds) || !payload.state.player) return false;
-      this.state = payload.state;
+      if (!payload.state || !payload.state.phase || !Array.isArray(payload.state.appliedBoostIds) || !payload.state.player) return false;
+      if (typeof payload.rngState !== "number") return false;
+      const normalizedState = payload.state;
+      normalizedState.level = Math.max(1, Math.floor(normalizedState.level ?? 1));
+      normalizedState.pendingLevelUps = Math.max(0, Math.floor(normalizedState.pendingLevelUps ?? 0));
+      normalizedState.xp = Math.max(0, Number(normalizedState.xp ?? 0));
+      normalizedState.mutators = Array.isArray(normalizedState.mutators) ? normalizedState.mutators : [];
+      normalizedState.challengeMode = normalizedState.challengeMode ?? "normal";
+      normalizedState.challenge = normalizedState.challenge ?? null;
+      this.state = normalizedState;
       this.rng.restore(payload.rngState);
       this.contactTimer = typeof payload.contactTimer === "number" ? payload.contactTimer : 0;
       return true;
@@ -145,6 +158,18 @@ export class Simulation {
       const gained = Math.max(0, state.stats.maxHp - prevMax);
       state.player.hp = Math.min(state.stats.maxHp, prevHp + gained);
     }
+
+    const hadPendingLevelUps = state.pendingLevelUps > 0;
+    if (hadPendingLevelUps) {
+      state.pendingLevelUps = Math.max(0, state.pendingLevelUps - 1);
+      state.boostOffers = this.rollOffers(state.boostOffers.map((boost) => boost.id));
+      if (state.pendingLevelUps > 0) {
+        state.phase = "boost";
+        state.strategicPhase = "boost";
+        return;
+      }
+    }
+
     state.boostOffers = [];
     state.routeOptions = createRouteOptions(state.waveIndex + 1);
     state.phase = "route";
@@ -206,6 +231,8 @@ export class Simulation {
     return {
       phase: "class_select",
       time: 0,
+      level: 1,
+      pendingLevelUps: 0,
       waveIndex: 0,
       kills: 0,
       remainingToSpawn: 0,
@@ -266,11 +293,14 @@ export class Simulation {
       waveTime: 0,
       eliteWave: false,
       artifactCounters: {},
+      mutators: Array.isArray(this.config.mutators) ? [...this.config.mutators] : [],
+      challengeMode: this.config.dailyChallenge?.mode ?? "normal",
+      challenge: this.config.dailyChallenge ?? null,
     };
   }
 
   private createProfile(): ProfileState {
-    return { version: 1, legacyShards: 0, runsCompleted: 0, bestWave: 0, unlockedClasses: ["vanguard", "marksman", "warden"] };
+    return { version: 1, legacyShards: 0, runsCompleted: 0, bestWave: 0, unlockedClasses: ["vanguard", "marksman", "warden"], achievements: [] };
   }
 
   private startWave(index: number): void {
@@ -311,10 +341,20 @@ export class Simulation {
     const { state } = this;
     if (!state.classId) return;
     const previousMax = state.player.maxHp;
-    state.stats = applyTemporaryEffects(
+    const baseStats = applyTemporaryEffects(
       applyBossCores(applyArtifacts(applyBuild(state.classId, state.appliedBoostIds, state.wavePickupIds), state.artifacts), state.bossCoreIds),
       state.activeTemporaryEffects,
     );
+    let stats = { ...baseStats };
+    for (const mutatorId of state.mutators) {
+      const mutator = getMutatorById(mutatorId);
+      if (!mutator) continue;
+      if (mutator.modifiers.playerHpMultiplier) stats.maxHp *= mutator.modifiers.playerHpMultiplier;
+      if (mutator.modifiers.playerDamageMultiplier) stats.projectileDamage *= mutator.modifiers.playerDamageMultiplier;
+      if (mutator.modifiers.xpMultiplier) stats.xpGain *= mutator.modifiers.xpMultiplier;
+      if (mutator.modifiers.lifestealMultiplier) stats.lifesteal *= mutator.modifiers.lifestealMultiplier;
+    }
+    state.stats = stats;
     state.player.maxHp = state.stats.maxHp;
     if (state.player.maxHp > previousMax) {
       state.player.hp = Math.min(state.player.maxHp, state.player.hp + state.player.maxHp - previousMax);
@@ -329,7 +369,8 @@ export class Simulation {
     state.pendingSpawns = [];
     for (const group of wave.groups) {
       const swarmMultiplier = state.activePacts.reduce((total, id) => total + (pactById(id)?.modifiers.enemyCount ?? 0), 0);
-      const spawnCount = Math.ceil(group.count * (1 + swarmMultiplier));
+      const mutatorCountMultiplier = this.mutatorMultiplier("enemyCountMultiplier");
+      const spawnCount = Math.ceil(group.count * (1 + swarmMultiplier) * mutatorCountMultiplier);
       for (let i = 0; i < spawnCount; i++) {
         state.pendingSpawns.push({ defId: group.enemyId, modifiers: wave.modifiers });
       }
@@ -477,13 +518,16 @@ export class Simulation {
     const { state } = this;
     const wave = this.waves[state.waveIndex - 1];
     if (!wave || state.pendingSpawns.length === 0) return;
-    state.spawnCooldown -= dt;
+    const elapsed = Number.isFinite(dt) ? Math.max(0, dt) : 0;
+    const spawnInterval = Number.isFinite(wave.spawnInterval) && wave.spawnInterval > 0 ? wave.spawnInterval : 0.2;
+    if (!Number.isFinite(state.spawnCooldown)) state.spawnCooldown = 0;
+    state.spawnCooldown -= elapsed;
     while (state.spawnCooldown <= 0 && state.pendingSpawns.length > 0) {
       const next = state.pendingSpawns.shift()!;
       const def = ENEMIES[next.defId];
       if (def) state.enemies.push(this.makeEnemy(def.id, undefined, next.modifiers));
       state.remainingToSpawn = state.pendingSpawns.length;
-      state.spawnCooldown += wave.spawnInterval;
+      state.spawnCooldown += spawnInterval;
     }
   }
 
@@ -495,8 +539,9 @@ export class Simulation {
     const artifactHp = state.artifacts.includes("cursed_skull") ? 0.2 : 0;
     const pactDamage = state.activePacts.reduce((total, id) => total + (pactById(id)?.modifiers.enemyDamage ?? 0), 0);
     const hpMultiplier = (modifiers.includes("armored") ? 1.25 : 1) * (1 + pactHp + artifactHp);
-    const speedMultiplier = modifiers.includes("fast") ? 1.35 : 1;
-    const damageMultiplier = modifiers.includes("vampiric") ? 1.2 : 1;
+    const speedMultiplier = (modifiers.includes("fast") ? 1.35 : 1) * this.mutatorMultiplier("enemySpeedMultiplier");
+    const damageMultiplier = (modifiers.includes("vampiric") ? 1.2 : 1) * this.mutatorMultiplier("enemyDamageMultiplier");
+    const totalHpMultiplier = hpMultiplier * this.mutatorMultiplier("enemyHpMultiplier");
     return {
       id: this.allocId(),
       team: "enemy",
@@ -504,8 +549,8 @@ export class Simulation {
       position: at ? vec.clone(at) : this.edgeSpawn(def.radius),
       velocity: vec.create(),
       radius: def.radius,
-      hp: def.hp * hpScale * hpMultiplier,
-      maxHp: def.hp * hpScale * hpMultiplier,
+      hp: def.hp * hpScale * totalHpMultiplier,
+      maxHp: def.hp * hpScale * totalHpMultiplier,
       alive: true,
       contactDamage: def.contactDamage * damageMultiplier * (1 + pactDamage),
       speed: def.speed * speedMultiplier,
@@ -1273,7 +1318,7 @@ export class Simulation {
     const goldValue = enemy.isBoss ? 10 : 1;
     this.state.gold += Math.max(1, Math.round(goldValue * this.state.stats.goldGain));
     const xpMultiplier = this.state.activePacts.reduce((total, id) => total * (pactById(id)?.reward.xpMultiplier ?? 1), 1);
-    this.state.xp += this.state.stats.xpGain * xpMultiplier;
+    this.grantXp(this.state.stats.xpGain * xpMultiplier);
     if (this.state.activeBounty?.target === "kills") this.state.bountyProgress += 1;
     if (this.state.activeBounty?.target === "elite" && this.state.eliteWave) this.state.bountyProgress += 1;
     const split = ENEMIES[enemy.defId]?.splitOnDeath;
@@ -1287,14 +1332,55 @@ export class Simulation {
     }
   }
 
+  grantXp(amount: number): void {
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    const { state } = this;
+    state.xp += amount;
+    let overflow = 0;
+    while (state.xp >= getXpRequiredForLevel(state.level)) {
+      const required = getXpRequiredForLevel(state.level);
+      state.xp -= required;
+      state.level += 1;
+      state.pendingLevelUps += 1;
+      overflow += 1;
+    }
+    if (overflow > 0 && state.phase === "combat") {
+      this.openLevelUpSelection();
+    }
+  }
+
+  private openLevelUpSelection(): void {
+    const { state } = this;
+    if (state.phase !== "combat" || state.pendingLevelUps <= 0) return;
+    state.rerollCharges = Math.max(state.rerollCharges, 1);
+    state.boostOffers = this.rollOffers();
+    state.phase = "boost";
+    state.strategicPhase = "boost";
+  }
+
   private pactEnemyDamageMultiplier(): number {
     return 1 + this.state.activePacts.reduce((total, id) => total + (pactById(id)?.modifiers.enemyDamage ?? 0), 0);
+  }
+
+  private mutatorMultiplier(key: keyof NonNullable<ReturnType<typeof getMutatorById>>["modifiers"]): number {
+    return this.state.mutators.reduce((total, id) => total * (getMutatorById(id)?.modifiers[key] ?? 1), 1);
   }
 
   private recordRun(victory: boolean): void {
     this.profile.runsCompleted += 1;
     this.profile.bestWave = Math.max(this.profile.bestWave, this.state.waveIndex);
     this.profile.legacyShards += Math.max(0, Math.floor(this.state.evolutionShards / 3)) + (victory ? 2 : 0);
+    const unlocked = [
+      this.profile.runsCompleted >= 1 ? "first_run" : null,
+      this.state.waveIndex >= 10 ? "wave_10" : null,
+      this.state.level >= 10 ? "level_10" : null,
+      victory ? "victory" : null,
+      victory && this.state.challengeMode === "daily" ? "daily_clear" : null,
+      victory && this.state.challengeMode === "weekly" ? "weekly_clear" : null,
+    ];
+    for (const id of unlocked) {
+      if (id && !this.profile.achievements.includes(id)) this.profile.achievements.push(id);
+    }
   }
 }
 
