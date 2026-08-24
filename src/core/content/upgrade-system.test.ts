@@ -60,6 +60,23 @@ test("xp thresholds use a data-driven progression curve and preserve overflow", 
     assert.ok(simulation.state.boostOffers.length > 0);
 });
 
+test("an in-wave level-up returns to combat instead of skipping the wave", () => {
+    const simulation = new Simulation({ seed: 14, maxWaves: 6 });
+    simulation.selectClass("marksman");
+    simulation.state.phase = "boost";
+    simulation.state.strategicPhase = "boost";
+    simulation.state.pendingLevelUps = 1;
+    simulation.state.pendingSpawns = [{ defId: "grunt" }];
+    simulation.state.boostOffers = (simulation as any).rollOffers();
+
+    simulation.selectBoost(simulation.state.boostOffers[0].id);
+
+    assert.equal(simulation.state.phase, "combat");
+    assert.equal(simulation.state.strategicPhase, "combat");
+    assert.equal(simulation.state.pendingLevelUps, 0);
+    assert.deepEqual(simulation.state.routeOptions, []);
+});
+
 test("mutators are data-driven and daily challenges generate deterministic rulesets", () => {
     assert.ok(FEATURE_FLAGS.ENABLE_MUTATORS, "Mutator flag should be enabled by default");
     const vampire = getMutatorById("vampire_night");

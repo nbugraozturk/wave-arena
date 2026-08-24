@@ -49,13 +49,26 @@ test("run save/load preserves strategic state", () => {
     source.selectClass("marksman");
     source.state.gold = 42;
     source.state.evolutionShards = 3;
+    source.state.level = 4;
+    source.state.xp = 73;
+    source.state.pendingLevelUps = 1;
     source.state.artifacts.push("magnet");
     const restored = new Simulation({ seed: 99, maxWaves: 6 });
     assert.equal(restored.loadRun(source.saveRun()), true);
     assert.equal(restored.state.classId, "marksman");
     assert.equal(restored.state.gold, 42);
+    assert.equal(restored.state.level, 4);
+    assert.equal(restored.state.xp, 73);
+    assert.equal(restored.state.pendingLevelUps, 1);
     assert.deepEqual(restored.state.artifacts, ["magnet"]);
     assert.equal(restored.loadRun("{}"), false);
+
+    const corrupted = JSON.parse(source.saveRun()) as { state: Record<string, unknown> };
+    corrupted.state.level = "invalid";
+    corrupted.state.xp = "invalid";
+    assert.equal(restored.loadRun(JSON.stringify(corrupted)), true);
+    assert.equal(restored.state.level, 1);
+    assert.equal(restored.state.xp, 0);
 });
 
 test("earned gold can open the shop and purchase an item", () => {

@@ -98,9 +98,12 @@ export class Simulation {
       if (!payload.state || !payload.state.phase || !Array.isArray(payload.state.appliedBoostIds) || !payload.state.player) return false;
       if (typeof payload.rngState !== "number") return false;
       const normalizedState = payload.state;
-      normalizedState.level = Math.max(1, Math.floor(normalizedState.level ?? 1));
-      normalizedState.pendingLevelUps = Math.max(0, Math.floor(normalizedState.pendingLevelUps ?? 0));
-      normalizedState.xp = Math.max(0, Number(normalizedState.xp ?? 0));
+      const level = Number(normalizedState.level ?? 1);
+      const pendingLevelUps = Number(normalizedState.pendingLevelUps ?? 0);
+      const xp = Number(normalizedState.xp ?? 0);
+      normalizedState.level = Number.isFinite(level) ? Math.max(1, Math.floor(level)) : 1;
+      normalizedState.pendingLevelUps = Number.isFinite(pendingLevelUps) ? Math.max(0, Math.floor(pendingLevelUps)) : 0;
+      normalizedState.xp = Number.isFinite(xp) ? Math.max(0, xp) : 0;
       normalizedState.mutators = Array.isArray(normalizedState.mutators) ? normalizedState.mutators : [];
       normalizedState.challengeMode = normalizedState.challengeMode ?? "normal";
       normalizedState.challenge = normalizedState.challenge ?? null;
@@ -166,6 +169,12 @@ export class Simulation {
       if (state.pendingLevelUps > 0) {
         state.phase = "boost";
         state.strategicPhase = "boost";
+        return;
+      }
+      if (state.pendingSpawns.length > 0 || state.enemies.some((enemy) => enemy.alive)) {
+        state.boostOffers = [];
+        state.phase = "combat";
+        state.strategicPhase = "combat";
         return;
       }
     }
