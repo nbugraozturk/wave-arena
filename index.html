@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Wave Arena</title>
-    <script type="module" crossorigin src="./assets/index-CrjmgOxF.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-D5Ti_Brz.css">
+    <script type="module" crossorigin src="./assets/index-BBY1skyR.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CyhKquo5.css">
   </head>
   <body>
     <div id="app">
@@ -26,9 +26,11 @@
         <p id="hint">WASD hareket · Fare nişan · Sol tık ateş · Q ulti</p>
         <div id="level-line">Level 1</div>
         <div id="class-line">Sınıf seç</div>
+        <div id="seed-line">SEED <span id="seed-value">-</span></div>
         <div id="resource-line" class="resource-display">
           <span><b class="resource-icon gold-icon">G</b><strong id="gold-value">0</strong><small>GOLD</small></span>
           <span><b class="resource-icon shard-icon">S</b><strong id="shard-value">0</strong><small>SHARD</small></span>
+          <span><b class="resource-icon mastery-icon">M</b><strong id="mastery-value">0 / 100</strong><small>MASTERY</small></span>
           <span><b class="resource-icon reroll-icon">R</b><strong id="reroll-value">0</strong><small>REROLL</small></span>
         </div>
         <div id="bounty-line" class="hidden"></div>
@@ -69,14 +71,20 @@
             <button id="daily-challenge-btn" type="button">Günlük challenge başlat</button>
             <button id="weekly-challenge-btn" type="button">Haftalık challenge başlat</button>
           </div>
+          <section id="ascension-section" class="run-mode-actions">
+            <h3>Run mode</h3>
+            <p id="ascension-progress">En iyi dalga: 0 · Ascension 1 için Wave 8 gerekli</p>
+            <div id="ascension-buttons"></div>
+          </section>
           <div id="class-cards"></div>
         </div>
       </div>
       <div id="boost-overlay" class="hidden">
         <div class="boost-panel">
           <div class="panel-kicker">DECISION POINT 01</div>
-          <h2>Dalga tamamlandı</h2>
-          <p id="wave-brief">Bir boost seç. Sonraki dalganın tehdidine göre karar ver.</p>
+          <h2 id="boost-title">Dalga tamamlandı</h2>
+          <p id="boost-description">Bir boost seç. Sonraki dalganın tehdidine göre karar ver.</p>
+          <div id="wave-brief" class="wave-brief"></div>
           <div id="wave-threats" class="threat-list"></div>
           <div id="future-threats" class="future-threats"></div>
           <div id="boost-cards"></div>
@@ -129,6 +137,10 @@
         <div class="boost-panel">
           <h2 id="end-title">Kaybettin</h2>
           <p id="end-body"></p>
+          <div id="leaderboard-panel">
+            <h3>Leaderboard</h3>
+            <ol id="leaderboard-list"></ol>
+          </div>
           <button id="restart-btn" type="button">Yeniden başla</button>
         </div>
       </div>
