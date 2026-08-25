@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { buildWaves, getFutureWavePreviews } from "./catalog";
 import { bountiesForWave, canFuse, canFuseWithState, createRouteOptions, createShopInventory, eventById, FUSION_RECIPES, missingFusionIngredients, PACTS } from "./strategic";
 import { CLASSES } from "./classes";
+import { buildDailyChallenge } from "./mutators";
 import { Simulation } from "../Simulation";
 
 test("fusion recipes consume duplicate ingredients without changing the catalog", () => {
@@ -200,6 +201,38 @@ test("wave spawning recovers when the frame timer becomes invalid", () => {
     simulation.tick(Number.NaN, { moveX: 0, moveY: 0, aimX: 1440, aimY: 810, firing: false, ult: false });
     assert.equal(simulation.state.pendingSpawns.length, before - 1);
     assert.equal(Number.isFinite(simulation.state.spawnCooldown), true);
+});
+
+test("pickup and enemy spawn positions use varied perimeter samples", () => {
+    const simulation = new Simulation({ seed: 14, maxWaves: 6 });
+    simulation.selectClass("marksman");
+    const pickupPositions = simulation.state.pickups.map((pickup) => `${pickup.position.x}:${pickup.position.y}`);
+    assert.equal(new Set(pickupPositions).size, pickupPositions.length);
+    assert.ok(simulation.state.pickups.some((pickup) => ![360, 820, 1440, 2040, 2460, 720, 1800, 2480].includes(pickup.position.x)));
+
+    const enemyPositions = Array.from({ length: 12 }, () => (simulation as any).makeEnemy("grunt").position);
+    const enemySamples = enemyPositions.map((position) => `${position.x}:${position.y}`);
+    assert.equal(new Set(enemySamples).size, enemySamples.length);
+    assert.ok(enemyPositions.some((position) => position.x > 0 && position.x < 2880 && (position.y < 0 || position.y > 1620)));
+});
+
+test("normal restarts refresh spawn randomness while challenges remain seeded", () => {
+    const normal = new Simulation({ seed: 15, maxWaves: 6 });
+    normal.selectClass("marksman");
+    const first = normal.state.pickups.map((pickup) => `${pickup.position.x}:${pickup.position.y}`).join("|");
+    normal.reset();
+    normal.selectClass("marksman");
+    const second = normal.state.pickups.map((pickup) => `${pickup.position.x}:${pickup.position.y}`).join("|");
+    assert.notEqual(first, second);
+
+    const challenge = buildDailyChallenge("2026-08-24");
+    const seeded = new Simulation({ seed: challenge.seed, maxWaves: 10, mutators: challenge.mutators, dailyChallenge: challenge });
+    seeded.selectClass("marksman");
+    const challengeFirst = seeded.state.pickups.map((pickup) => `${pickup.position.x}:${pickup.position.y}`).join("|");
+    seeded.reset();
+    seeded.selectClass("marksman");
+    const challengeSecond = seeded.state.pickups.map((pickup) => `${pickup.position.x}:${pickup.position.y}`).join("|");
+    assert.equal(challengeFirst, challengeSecond);
 });
 
 test("Pact completion grants its reward only once", () => {

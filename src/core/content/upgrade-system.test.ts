@@ -3,7 +3,13 @@ import assert from "node:assert/strict";
 
 import { getBuildSummary, getWavePreview, getUpgradeOptions, getXpRequiredForLevel } from "./catalog";
 import { buildDailyChallenge, buildWeeklyChallenge, getMutatorById, getMutatorsForDate, FEATURE_FLAGS } from "./mutators";
-import { Simulation } from "../Simulation";
+import { getBoostPanelCopy, Simulation } from "../Simulation";
+
+test("level-up boost popup clearly shows the level-up instead of a wave clear", () => {
+    const copy = getBoostPanelCopy({ pendingLevelUps: 1, waveIndex: 4 });
+    assert.equal(copy.title, "Seviye atladı!");
+    assert.match(copy.description, /Seviye/i);
+});
 
 test("build summary flags a projectile synergy when thresholds are reached", () => {
     const summary = getBuildSummary(["multishot", "multishot", "velocity", "pierce", "pierce"]);

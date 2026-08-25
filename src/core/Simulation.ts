@@ -16,6 +16,11 @@ import { ACHIEVEMENTS } from "./content/achievements";
 import { classById, CLASSES, ULT_CORE_ID, ultPower } from "./content/classes";
 import { ARTIFACTS, bountiesForWave, BOSS_REWARDS, canFuse, canFuseWithState, commitmentById, FUSION_RECIPES, artifactById, createRouteOptions, createShopInventory, eventById, pactById, PACTS, temporaryEffectById } from "./content/strategic";
 import { pickupById, WAVE_PICKUPS } from "./content/pickups";
+import { previewWaves } from "./content/wave-preview";
+import { applyRunModifiersToStats, applyRunModifierToWave } from "./content/run-modifiers";
+import { getEliteChance, selectEliteModifiers, applyEliteModifiers } from "./content/elite-system";
+import { addMasteryXp, calculateMasteryXpGain, getUnlockedContentIds, MAX_MASTERY_XP, UNLOCKS } from "./content/unlocks";
+import { applyAscensionStats, applyAscensionToWave } from "./content/ascension-modifiers";
 import { vec } from "./math/vec2";
 import { Rng } from "./rng";
 import type {
@@ -28,6 +33,7 @@ import type {
   GameState,
   InputSnapshot,
   EnemyModifierId,
+  RunModifierId,
   PlayerStats,
   ProjectileActor,
   ProfileState,
@@ -42,26 +48,61 @@ const BARREL = 20;
 const OFFER_COUNT = 3;
 const VOLLEY_GAP = 0.038;
 
+export function getBoostPanelCopy(state: Partial<Pick<GameState, "pendingLevelUps" | "waveIndex" | "level">>): { title: string; description: string } {
+  const pendingLevelUps = state.pendingLevelUps ?? 0;
+  const level = state.level ?? 1;
+
+  if (pendingLevelUps > 0) {
+    const levelText = pendingLevelUps > 1 ? `${pendingLevelUps} seviyeyi` : "1 seviyeyi";
+    return {
+      title: "Seviye atladı!",
+      description: `Seviye atlaması yaşandı: ${level} seviyesine ulaştın. ${levelText} tek seferde aştın; yeni boost seçimi kapısı açıldı.`,
+    };
+  }
+
+  return {
+    title: "Dalga tamamlandı",
+    description: "Bir boost seç. Sonraki dalganın tehdidine göre karar ver.",
+  };
+}
+
 export class Simulation {
   readonly config: GameConfig;
   readonly waves;
   state: GameState;
   profile: ProfileState;
   private rng: Rng;
+  private currentSeed: number;
   private contactTimer = 0;
 
   constructor(config: GameConfig) {
     this.config = config;
     this.waves = buildWaves(config.maxWaves);
     this.rng = new Rng(config.seed);
+    this.currentSeed = config.seed;
     this.profile = this.createProfile();
     this.state = this.createInitialState();
   }
 
-  reset(): void {
-    this.rng = new Rng(this.config.seed);
+  getSeed(): number {
+    return this.currentSeed;
+  }
+
+  reset(retrySameSeed = false): void {
+    const resetSeed = retrySameSeed || this.config.dailyChallenge
+      ? this.currentSeed
+      : (Date.now() ^ this.rng.snapshot()) >>> 0;
+    this.currentSeed = resetSeed;
+    this.rng = new Rng(resetSeed);
     this.contactTimer = 0;
     this.state = this.createInitialState();
+  }
+
+  private log(event: string, details?: Record<string, unknown>): void {
+    if (!this.config.debugLogging) return;
+    const timestamp = `[Wave ${this.state.waveIndex} T${this.state.time.toFixed(2)}s]`;
+    const message = details ? `${timestamp} ${event}: ${JSON.stringify(details)}` : `${timestamp} ${event}`;
+    console.log(message);
   }
 
   saveProfile(): string {
@@ -81,7 +122,13 @@ export class Simulation {
         achievements: Array.isArray(profile.achievements)
           ? profile.achievements.filter((id) => ACHIEVEMENTS.some((achievement) => achievement.id === id))
           : [],
+        masteryXp: Math.min(MAX_MASTERY_XP, Math.max(0, Math.floor(profile.masteryXp ?? 0))),
+        unlockedBoosts: Array.isArray(profile.unlockedBoosts) ? profile.unlockedBoosts.filter((id) => UNLOCKS.some((unlock) => unlock.id === id && unlock.kind === "boost")) : [],
+        unlockedEnemyVariants: Array.isArray(profile.unlockedEnemyVariants)
+          ? profile.unlockedEnemyVariants.filter((id) => UNLOCKS.some((unlock) => unlock.id === id && unlock.kind === "enemy_variant"))
+          : [],
       };
+      const pool = availableBoosts(this.state.appliedBoostIds, this.state.waveIndex, getUnlockedContentIds(this.profile));
       return true;
     } catch {
       return false;
@@ -107,6 +154,8 @@ export class Simulation {
       normalizedState.mutators = Array.isArray(normalizedState.mutators) ? normalizedState.mutators : [];
       normalizedState.challengeMode = normalizedState.challengeMode ?? "normal";
       normalizedState.challenge = normalizedState.challenge ?? null;
+      normalizedState.activeRunModifiers = Array.isArray(normalizedState.activeRunModifiers) ? normalizedState.activeRunModifiers : [];
+      normalizedState.activeAscensionLevel = normalizedState.activeAscensionLevel === 1 ? 1 : 0;
       this.state = normalizedState;
       this.rng.restore(payload.rngState);
       this.contactTimer = typeof payload.contactTimer === "number" ? payload.contactTimer : 0;
@@ -127,6 +176,7 @@ export class Simulation {
     state.player.maxHp = state.stats.maxHp;
     state.player.hp = state.stats.maxHp;
     state.player.color = cls.color;
+    this.log("RUN_START", { class: classId, hp: state.player.hp });
     this.startWave(1);
   }
 
@@ -164,6 +214,7 @@ export class Simulation {
 
     const hadPendingLevelUps = state.pendingLevelUps > 0;
     if (hadPendingLevelUps) {
+      state.freeRerollCharges += 1; // Grant 1 free reroll per level-up
       state.pendingLevelUps = Math.max(0, state.pendingLevelUps - 1);
       state.boostOffers = this.rollOffers(state.boostOffers.map((boost) => boost.id));
       if (state.pendingLevelUps > 0) {
@@ -179,6 +230,7 @@ export class Simulation {
       }
     }
 
+    this.log("UPGRADE_CHOSEN", { boostId: boostId, name: picked.name });
     state.boostOffers = [];
     state.routeOptions = createRouteOptions(state.waveIndex + 1);
     state.phase = "route";
@@ -224,7 +276,13 @@ export class Simulation {
   }
 
   private createInitialState(): GameState {
-    const stats = { ...BASE_STATS };
+    let stats = { ...BASE_STATS };
+    // Apply run modifiers if configured
+    const runModifiers = this.config.runModifiers ?? [];
+    if (runModifiers.length > 0) {
+      stats = applyRunModifiersToStats(stats, runModifiers as RunModifierId[]);
+    }
+    stats = applyAscensionStats(stats, this.config.ascensionLevel ?? 0);
     const player = {
       id: 1,
       team: "player" as const,
@@ -274,6 +332,7 @@ export class Simulation {
       waveShield: 0,
       waveVuln: 1,
       rerollCharges: 1,
+      freeRerollCharges: 0,
       strategicPhase: "combat",
       gold: 0,
       evolutionShards: 0,
@@ -305,11 +364,23 @@ export class Simulation {
       mutators: Array.isArray(this.config.mutators) ? [...this.config.mutators] : [],
       challengeMode: this.config.dailyChallenge?.mode ?? "normal",
       challenge: this.config.dailyChallenge ?? null,
+      activeRunModifiers: this.config.runModifiers ?? [],
+      activeAscensionLevel: this.config.ascensionLevel ?? 0,
     };
   }
 
   private createProfile(): ProfileState {
-    return { version: 1, legacyShards: 0, runsCompleted: 0, bestWave: 0, unlockedClasses: ["vanguard", "marksman", "warden"], achievements: [] };
+    return {
+      version: 1,
+      legacyShards: 0,
+      runsCompleted: 0,
+      bestWave: 0,
+      unlockedClasses: ["vanguard", "marksman", "warden"],
+      achievements: [],
+      masteryXp: 0,
+      unlockedBoosts: [],
+      unlockedEnemyVariants: [],
+    };
   }
 
   private startWave(index: number): void {
@@ -318,6 +389,7 @@ export class Simulation {
       state.phase = "victory";
       return;
     }
+    this.log("WAVE_START", { wave: index });
     this.hydrateWave(state, index);
     state.phase = "combat";
     state.enemies = [];
@@ -363,6 +435,11 @@ export class Simulation {
       if (mutator.modifiers.xpMultiplier) stats.xpGain *= mutator.modifiers.xpMultiplier;
       if (mutator.modifiers.lifestealMultiplier) stats.lifesteal *= mutator.modifiers.lifestealMultiplier;
     }
+    // Apply run modifiers
+    if (state.activeRunModifiers && state.activeRunModifiers.length > 0) {
+      stats = applyRunModifiersToStats(stats, state.activeRunModifiers as RunModifierId[]);
+    }
+    stats = applyAscensionStats(stats, state.activeAscensionLevel);
     state.stats = stats;
     state.player.maxHp = state.stats.maxHp;
     if (state.player.maxHp > previousMax) {
@@ -376,12 +453,44 @@ export class Simulation {
     state.waveIndex = index;
     state.eliteWave = Boolean(wave.elite);
     state.pendingSpawns = [];
+
+    // Apply run modifier wave effects
+    let baseEliteChance = getEliteChance(index);
+    let countMultiplier = 1.0;
+    let hpMultiplier = 1.0;
+    let ascensionEffects = applyAscensionToWave(state.activeAscensionLevel);
+
+    for (const modifierId of state.activeRunModifiers) {
+      const modEffects = applyRunModifierToWave(index, { id: modifierId } as any, baseEliteChance);
+      baseEliteChance = modEffects.eliteChance;
+      countMultiplier *= modEffects.enemyCountMultiplier;
+      hpMultiplier *= modEffects.enemyHpMultiplier;
+    }
+    countMultiplier *= ascensionEffects.enemyCountMultiplier;
+    hpMultiplier *= ascensionEffects.enemyHpMultiplier;
+
+    // Build spawn list with elite modifiers
     for (const group of wave.groups) {
       const swarmMultiplier = state.activePacts.reduce((total, id) => total + (pactById(id)?.modifiers.enemyCount ?? 0), 0);
       const mutatorCountMultiplier = this.mutatorMultiplier("enemyCountMultiplier");
-      const spawnCount = Math.ceil(group.count * (1 + swarmMultiplier) * mutatorCountMultiplier);
+      const runModifierCountMultiplier = countMultiplier; // From run modifiers
+      const spawnCount = Math.ceil(group.count * (1 + swarmMultiplier) * mutatorCountMultiplier * runModifierCountMultiplier);
+
       for (let i = 0; i < spawnCount; i++) {
-        state.pendingSpawns.push({ defId: group.enemyId, modifiers: wave.modifiers });
+        let modifiers = wave.modifiers ? [...wave.modifiers] : [];
+
+        // Determine if this enemy gets elite modifiers
+        const roll = this.rng.next();
+        if (roll < baseEliteChance) {
+          const eliteModifiers = selectEliteModifiers(this.rng);
+          modifiers = [...modifiers, ...eliteModifiers];
+        }
+
+        state.pendingSpawns.push({
+          defId: group.enemyId,
+          modifiers: modifiers as EnemyModifierId[],
+          hpMultiplier, // Store for makeEnemy to apply
+        });
       }
     }
     state.pendingSpawns = this.rng.shuffle(state.pendingSpawns);
@@ -534,32 +643,52 @@ export class Simulation {
     while (state.spawnCooldown <= 0 && state.pendingSpawns.length > 0) {
       const next = state.pendingSpawns.shift()!;
       const def = ENEMIES[next.defId];
-      if (def) state.enemies.push(this.makeEnemy(def.id, undefined, next.modifiers));
+      if (def) state.enemies.push(this.makeEnemy(def.id, undefined, next.modifiers, next.hpMultiplier ?? 1.0));
       state.remainingToSpawn = state.pendingSpawns.length;
       state.spawnCooldown += spawnInterval;
     }
   }
 
-  private makeEnemy(defId: string, at?: { x: number; y: number }, modifiers: EnemyModifierId[] = []): EnemyActor {
+  private makeEnemy(defId: string, at?: { x: number; y: number }, modifiers: EnemyModifierId[] = [], hpMultiplier: number = 1.0): EnemyActor {
     const { state } = this;
     const def = ENEMIES[defId]!;
-    const hpScale = 1 + (this.state.waveIndex - 1) * 0.12;
+    const waveIndex = this.state.waveIndex;
+    const baseHpScale = 1 + (waveIndex - 1) * 0.12;
     const pactHp = state.activePacts.reduce((total, id) => total + (pactById(id)?.modifiers.enemyHp ?? 0), 0);
     const artifactHp = state.artifacts.includes("cursed_skull") ? 0.2 : 0;
     const pactDamage = state.activePacts.reduce((total, id) => total + (pactById(id)?.modifiers.enemyDamage ?? 0), 0);
-    const hpMultiplier = (modifiers.includes("armored") ? 1.25 : 1) * (1 + pactHp + artifactHp);
-    const speedMultiplier = (modifiers.includes("fast") ? 1.35 : 1) * this.mutatorMultiplier("enemySpeedMultiplier");
-    const damageMultiplier = (modifiers.includes("vampiric") ? 1.2 : 1) * this.mutatorMultiplier("enemyDamageMultiplier");
-    const totalHpMultiplier = hpMultiplier * this.mutatorMultiplier("enemyHpMultiplier");
-    return {
+
+    // Apply elite modifier multipliers
+    let modifierHpMultiplier = 1.0;
+    let modifierSpeedMultiplier = 1.0;
+    let modifierDamageMultiplier = 1.0;
+
+    for (const modId of modifiers) {
+      if (modId === "armored") modifierHpMultiplier *= 1.25;
+      else if (modId === "fast") modifierSpeedMultiplier *= 1.4;
+      else if (modId === "vampiric") modifierDamageMultiplier *= 1.2;
+      else if (modId === "regenerating") modifierHpMultiplier *= 1.2;
+      else if (modId === "explosive") modifierHpMultiplier *= 1.15;
+      else if (modId === "swarming") modifierHpMultiplier *= 1.1;
+      else if (modId === "shielded") modifierHpMultiplier *= 1.15;
+      else if (modId === "reflective") modifierHpMultiplier *= 1.2;
+      else if (modId === "ranged") modifierHpMultiplier *= 1.15;
+    }
+
+    const totalHpMultiplier = baseHpScale * (1 + pactHp + artifactHp) * modifierHpMultiplier * hpMultiplier * this.mutatorMultiplier("enemyHpMultiplier");
+    const speedMultiplier = modifierSpeedMultiplier * this.mutatorMultiplier("enemySpeedMultiplier");
+    const damageMultiplier = modifierDamageMultiplier * this.mutatorMultiplier("enemyDamageMultiplier");
+
+    const hp = Math.ceil(def.hp * totalHpMultiplier);
+    const enemy: EnemyActor = {
       id: this.allocId(),
       team: "enemy",
       defId,
       position: at ? vec.clone(at) : this.edgeSpawn(def.radius),
       velocity: vec.create(),
       radius: def.radius,
-      hp: def.hp * hpScale * totalHpMultiplier,
-      maxHp: def.hp * hpScale * totalHpMultiplier,
+      hp: hp,
+      maxHp: hp,
       alive: true,
       contactDamage: def.contactDamage * damageMultiplier * (1 + pactDamage),
       speed: def.speed * speedMultiplier,
@@ -571,19 +700,32 @@ export class Simulation {
       fireCooldown: this.rng.next() * (def.shoot?.interval ?? 1),
       orbitSign: this.rng.next() < 0.5 ? -1 : 1,
       isBoss: Boolean(def.isBoss),
-      modifiers,
-      shield: modifiers.includes("shielded") ? def.hp * 0.35 : 0,
+      modifiers: modifiers,
+      shield: 0,
     };
+
+    // Apply elite modifier special effects
+    for (const modId of modifiers) {
+      if (modId === "regenerating") enemy.regeneration = { perSecond: hp * 0.05 };
+      else if (modId === "explosive") enemy.explodeOnDeath = { radius: 100, damage: 40 };
+      else if (modId === "shielded") enemy.shield = Math.ceil(hp * 0.3);
+      else if (modId === "reflective") enemy.reflection = { damage: 0.15 };
+      else if (modId === "swarming") enemy.splitOnDeath = { enemyId: defId, count: 2 };
+      else if (modId === "ranged") enemy.shoot = { damage: 15, interval: 1.5, speed: 400, range: 500 };
+    }
+
+    return enemy;
   }
 
   private edgeSpawn(radius: number) {
-    const side = this.rng.int(4);
     const w = WORLD.width;
     const h = WORLD.height;
-    if (side === 0) return vec.create(this.rng.next() * w, -radius);
-    if (side === 1) return vec.create(this.rng.next() * w, h + radius);
-    if (side === 2) return vec.create(-radius, this.rng.next() * h);
-    return vec.create(w + radius, this.rng.next() * h);
+    const perimeter = 2 * (w + h);
+    const distance = this.rng.next() * perimeter;
+    if (distance < w) return vec.create(distance, -radius);
+    if (distance < w + h) return vec.create(w + radius, distance - w);
+    if (distance < 2 * w + h) return vec.create(w - (distance - w - h), h + radius);
+    return vec.create(-radius, h - (distance - 2 * w - h));
   }
 
   private moveEnemies(dt: number): void {
@@ -623,6 +765,7 @@ export class Simulation {
       }
 
       enemy.position = vec.add(enemy.position, vec.scale(enemy.velocity, dt));
+      enemy.position = vec.clampToRect(enemy.position, WORLD.width, WORLD.height, enemy.radius);
       this.tryEnemyShoot(enemy, dt, dist, chase);
     }
     this.applyHealAuras(dt);
@@ -771,6 +914,7 @@ export class Simulation {
       const taken = remaining * state.stats.damageTakenMultiplier;
       state.player.hp -= taken;
       state.waveDamageTaken += taken;
+      this.log("DAMAGE_TAKEN", { damage: taken, hp: state.player.hp, totalWaveDamage: state.waveDamageTaken });
       if (state.activeBounty?.target === "no_damage") state.bountyFailed = true;
     }
     this.cue("hurt");
@@ -900,6 +1044,7 @@ export class Simulation {
     const { state } = this;
     if (!state.player.alive) {
       state.phase = "defeat";
+      this.log("WAVE_END", { wave: state.waveIndex, reason: "player_death", damageTotal: state.waveDamageTaken });
       this.recordRun(false);
       return;
     }
@@ -911,18 +1056,23 @@ export class Simulation {
 
     if (this.waves[state.waveIndex - 1]?.groups.some((group) => ENEMIES[group.enemyId]?.isBoss)) {
       state.bossRewardOffers = [...BOSS_REWARDS];
+      this.log("WAVE_END", { wave: state.waveIndex, reason: "wave_complete", damageTotal: state.waveDamageTaken });
+      this.log("UPGRADE_OFFERED", { count: state.bossRewardOffers.length, type: "boss_reward" });
       state.phase = "boss_reward";
       state.strategicPhase = "boss_reward";
       return;
     }
     if (state.waveIndex >= this.config.maxWaves) {
       state.phase = "victory";
+      this.log("WAVE_END", { wave: state.waveIndex, reason: "run_complete", damageTotal: state.waveDamageTaken });
       this.recordRun(true);
       return;
     }
     state.phase = "boost";
     state.rerollCharges = Math.max(state.rerollCharges, 1);
+    this.log("WAVE_END", { wave: state.waveIndex, reason: "wave_complete", damageTotal: state.waveDamageTaken });
     state.boostOffers = this.rollOffers();
+    this.log("UPGRADE_OFFERED", { count: state.boostOffers.length, type: "normal_boost" });
   }
 
   choosePact(pactId: string): boolean {
@@ -988,10 +1138,11 @@ export class Simulation {
       excludedIds,
       this.state.committedBuild,
       this.state.recentBoostOffers,
+      getUnlockedContentIds(this.profile),
     );
     this.state.recentBoostOffers = [...this.state.recentBoostOffers, ...offers.map((boost) => boost.id)].slice(-12);
     if (offers.length === OFFER_COUNT) return offers;
-    const pool = availableBoosts(this.state.appliedBoostIds, this.state.waveIndex);
+    const pool = availableBoosts(this.state.appliedBoostIds, this.state.waveIndex, getUnlockedContentIds(this.profile));
     const picked = [...offers];
     for (const boost of pool) {
       if (picked.length >= OFFER_COUNT) break;
@@ -1291,10 +1442,19 @@ export class Simulation {
     const count = Math.min(2 + (this.state.waveIndex >= 5 ? 1 : 0), shuffledPickups.length);
     this.state.pickups = [];
     for (let i = 0; i < count; i++) {
+      const anchor = shuffledPoints[i];
+      const jitter = 90 + this.rng.next() * 90;
+      const angle = this.rng.next() * Math.PI * 2;
+      const position = vec.clampToRect(
+        vec.create(anchor.x + Math.cos(angle) * jitter, anchor.y + Math.sin(angle) * jitter),
+        WORLD.width,
+        WORLD.height,
+        28,
+      );
       this.state.pickups.push({
         id: this.allocId(),
         defId: shuffledPickups[i].id,
-        position: shuffledPoints[i],
+        position,
       });
     }
   }
@@ -1379,6 +1539,9 @@ export class Simulation {
     this.profile.runsCompleted += 1;
     this.profile.bestWave = Math.max(this.profile.bestWave, this.state.waveIndex);
     this.profile.legacyShards += Math.max(0, Math.floor(this.state.evolutionShards / 3)) + (victory ? 2 : 0);
+    this.profile.masteryXp = addMasteryXp(this.profile.masteryXp ?? 0, calculateMasteryXpGain(this.state.waveIndex, victory));
+    const unlockedBoosts = UNLOCKS.filter((unlock) => unlock.kind === "boost" && (this.profile.masteryXp ?? 0) >= unlock.masteryXp).map((unlock) => unlock.id);
+    this.profile.unlockedBoosts = [...new Set([...(this.profile.unlockedBoosts ?? []), ...unlockedBoosts])];
     const unlocked = [
       this.profile.runsCompleted >= 1 ? "first_run" : null,
       this.state.waveIndex >= 10 ? "wave_10" : null,

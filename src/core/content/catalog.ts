@@ -9,6 +9,8 @@ import type {
   WaveThreatPreview,
   EnemyModifierId,
 } from "../types";
+import { FEATURE_FLAGS } from "./mutators";
+import { calculateSynergyBonus } from "./synergy-detector";
 import { CLASSES, classById } from "./classes";
 import { applyPickupModifiers, pickupById } from "./pickups";
 import { artifactById, bossRewardById, commitmentById } from "./strategic";
@@ -71,6 +73,7 @@ export const BOOSTS: BoostDef[] = [
     category: "attack",
     rarity: "common",
     modifiers: { mul: { projectileDamage: 1.25 } },
+    tags: ["damage"],
     synergyTags: ["projectile-build", "assassin-build"],
   },
   {
@@ -80,6 +83,7 @@ export const BOOSTS: BoostDef[] = [
     category: "attack",
     rarity: "common",
     modifiers: { mul: { fireRate: 1.22 } },
+    tags: ["damage"],
     synergyTags: ["assassin-build", "projectile-build"],
   },
   {
@@ -89,6 +93,7 @@ export const BOOSTS: BoostDef[] = [
     category: "attack",
     rarity: "common",
     modifiers: { mul: { projectileSpeed: 1.2, spread: 0.9 } },
+    tags: ["damage", "utility"],
     synergyTags: ["projectile-build"],
   },
   {
@@ -98,6 +103,7 @@ export const BOOSTS: BoostDef[] = [
     category: "attack",
     rarity: "common",
     modifiers: { mul: { spread: 0.65 } },
+    tags: ["utility"],
   },
   {
     id: "pierce",
@@ -107,6 +113,7 @@ export const BOOSTS: BoostDef[] = [
     rarity: "rare",
     modifiers: { add: { projectilePierce: 1 } },
     maxCopies: 4,
+    tags: ["damage"],
     synergyTags: ["projectile-build"],
     evolution: "bullet-storm",
   },
@@ -118,6 +125,7 @@ export const BOOSTS: BoostDef[] = [
     rarity: "rare",
     modifiers: { add: { projectileCount: 1 }, mul: { spread: 1.15 } },
     maxCopies: 4,
+    tags: ["damage"],
     synergyTags: ["projectile-build"],
     evolution: "bullet-storm",
   },
@@ -130,6 +138,7 @@ export const BOOSTS: BoostDef[] = [
     modifiers: { add: { burstCount: 1 } },
     maxCopies: 3,
     minWave: 2,
+    tags: ["damage"],
     synergyTags: ["projectile-build"],
   },
   {
@@ -139,6 +148,7 @@ export const BOOSTS: BoostDef[] = [
     category: "attack",
     rarity: "rare",
     modifiers: { add: { critChance: 0.12 } },
+    tags: ["crit", "damage"],
     synergyTags: ["assassin-build"],
     evolution: "assassin",
   },
@@ -150,6 +160,7 @@ export const BOOSTS: BoostDef[] = [
     rarity: "rare",
     modifiers: { add: { critMultiplier: 0.5 } },
     minWave: 2,
+    tags: ["crit", "damage"],
     synergyTags: ["assassin-build"],
     evolution: "assassin",
   },
@@ -160,6 +171,7 @@ export const BOOSTS: BoostDef[] = [
     category: "attack",
     rarity: "rare",
     modifiers: { mul: { projectileDamage: 1.18 } },
+    tags: ["damage", "dot"],
     synergyTags: ["fire-build"],
     evolution: "inferno",
   },
@@ -170,6 +182,7 @@ export const BOOSTS: BoostDef[] = [
     category: "control",
     rarity: "rare",
     modifiers: { add: { slowDuration: 1.1 } },
+    tags: ["dot", "control"],
     synergyTags: ["fire-build"],
     evolution: "inferno",
   },
@@ -180,6 +193,7 @@ export const BOOSTS: BoostDef[] = [
     category: "control",
     rarity: "epic",
     modifiers: { add: { explosionRadius: 18 } },
+    tags: ["dot", "control"],
     synergyTags: ["fire-build"],
     evolution: "inferno",
   },
@@ -190,6 +204,7 @@ export const BOOSTS: BoostDef[] = [
     category: "attack",
     rarity: "epic",
     modifiers: { mul: { projectileDamage: 1.8 }, add: { maxHp: -40 } },
+    tags: ["damage"],
     risk: { label: "Risk / Reward", summary: "Güçlü hasar, daha kırılganlık." },
   },
   {
@@ -199,6 +214,7 @@ export const BOOSTS: BoostDef[] = [
     category: "attack",
     rarity: "epic",
     modifiers: { mul: { projectileDamage: 1.3 } },
+    tags: ["damage"],
     risk: { label: "Risk / Reward", summary: "Hasar yükselir, hayatta kalma düşer." },
   },
   {
@@ -208,6 +224,7 @@ export const BOOSTS: BoostDef[] = [
     category: "attack",
     rarity: "epic",
     modifiers: { mul: { fireRate: 1.5, projectileDamage: 0.7 } },
+    tags: ["damage"],
     risk: { label: "Risk / Reward", summary: "Daha hızlı atış, daha zayıf isabet." },
   },
   {
@@ -217,6 +234,7 @@ export const BOOSTS: BoostDef[] = [
     category: "defense",
     rarity: "epic",
     modifiers: { mul: { projectileDamage: 1.3 }, add: { lifesteal: -1 } },
+    tags: ["damage"],
     risk: { label: "Risk / Reward", summary: "Güçlü vurgu, hayatta kalma tercihi azalır." },
   },
   {
@@ -226,6 +244,7 @@ export const BOOSTS: BoostDef[] = [
     category: "defense",
     rarity: "common",
     modifiers: { add: { maxHp: 25 } },
+    tags: ["defense"],
     heal: true,
     synergyTags: ["tank-build"],
   },
@@ -236,6 +255,7 @@ export const BOOSTS: BoostDef[] = [
     category: "defense",
     rarity: "common",
     modifiers: { add: { armor: 15 } },
+    tags: ["defense"],
     synergyTags: ["tank-build"],
   },
   {
@@ -245,6 +265,7 @@ export const BOOSTS: BoostDef[] = [
     category: "defense",
     rarity: "rare",
     modifiers: { mul: { moveSpeed: 1.1 }, add: { dodge: 5 } },
+    tags: ["defense"],
     synergyTags: ["tank-build"],
   },
   {
@@ -254,6 +275,7 @@ export const BOOSTS: BoostDef[] = [
     category: "defense",
     rarity: "rare",
     modifiers: { add: { shield: 1 } },
+    tags: ["defense"],
     synergyTags: ["tank-build"],
   },
   {
@@ -265,6 +287,7 @@ export const BOOSTS: BoostDef[] = [
     modifiers: { add: { lifesteal: 0.08 } },
     maxCopies: 3,
     minWave: 3,
+    tags: ["defense"],
     antiSynergy: ["shield"],
   },
   {
@@ -275,6 +298,7 @@ export const BOOSTS: BoostDef[] = [
     rarity: "rare",
     modifiers: { add: { maxHp: 40 } },
     minWave: 4,
+    tags: ["defense"],
     synergyTags: ["tank-build"],
   },
   {
@@ -284,6 +308,7 @@ export const BOOSTS: BoostDef[] = [
     category: "control",
     rarity: "common",
     modifiers: { add: { knockback: 70 } },
+    tags: ["control"],
   },
   {
     id: "frost",
@@ -294,6 +319,7 @@ export const BOOSTS: BoostDef[] = [
     modifiers: { add: { slowFactor: 0.45, slowDuration: 1.2 } },
     maxCopies: 2,
     minWave: 2,
+    tags: ["control"],
     synergyTags: ["fire-build"],
   },
   {
@@ -303,6 +329,7 @@ export const BOOSTS: BoostDef[] = [
     category: "control",
     rarity: "epic",
     modifiers: { add: { slowFactor: 0.7, slowDuration: 1.8 } },
+    tags: ["control"],
     synergyTags: ["assassin-build"],
   },
   {
@@ -312,6 +339,7 @@ export const BOOSTS: BoostDef[] = [
     category: "control",
     rarity: "epic",
     modifiers: { add: { critChance: 0.08, slowDuration: 0.5 } },
+    tags: ["control"],
     synergyTags: ["assassin-build"],
   },
   {
@@ -321,6 +349,7 @@ export const BOOSTS: BoostDef[] = [
     category: "economy",
     rarity: "common",
     modifiers: { mul: { xpGain: 1.2 } },
+    tags: ["economy"],
   },
   {
     id: "gold_gain",
@@ -329,6 +358,7 @@ export const BOOSTS: BoostDef[] = [
     category: "economy",
     rarity: "rare",
     modifiers: { mul: { goldGain: 1.15 } },
+    tags: ["economy"],
   },
   {
     id: "drop_chance",
@@ -337,6 +367,7 @@ export const BOOSTS: BoostDef[] = [
     category: "economy",
     rarity: "rare",
     modifiers: { mul: { dropChance: 1.12 } },
+    tags: ["economy"],
   },
   {
     id: "reroll",
@@ -345,6 +376,7 @@ export const BOOSTS: BoostDef[] = [
     category: "economy",
     rarity: "rare",
     modifiers: { add: { rerollCharges: 1 } },
+    tags: ["economy", "utility"],
   },
   {
     id: "ult_core",
@@ -353,8 +385,31 @@ export const BOOSTS: BoostDef[] = [
     category: "ult",
     rarity: "epic",
     modifiers: {},
+    tags: ["utility"],
     maxCopies: 4,
     minWave: 3,
+  },
+  {
+    id: "bouncing_rounds",
+    name: "Sekme mermileri",
+    description: "+1 sekme",
+    category: "weapon",
+    rarity: "rare",
+    modifiers: { add: { ricochet: 1 } },
+    tags: ["damage", "utility"],
+    unlockRequired: "bouncing_rounds",
+    minWave: 3,
+  },
+  {
+    id: "overcharged_core",
+    name: "Aşırı yük çekirdeği",
+    description: "+1 mermi",
+    category: "weapon",
+    rarity: "epic",
+    modifiers: { add: { projectileCount: 1 } },
+    tags: ["damage"],
+    unlockRequired: "overcharged_core",
+    minWave: 5,
   },
 ];
 
@@ -475,6 +530,15 @@ export const ENEMIES: Record<string, EnemyDef> = {
     color: "#e0aaff",
     ai: "chase",
   },
+  stalker: {
+    id: "stalker",
+    hp: 35,
+    speed: 85,
+    radius: 15,
+    contactDamage: 15,
+    color: "#a94444",
+    ai: "chase",
+  },
 };
 
 const RARITY_WEIGHT: Record<BoostDef["rarity"], number> = {
@@ -495,6 +559,7 @@ export function buildWaves(maxWaves: number): WaveDef[] {
     if (i >= 5) groups.push({ enemyId: "shaman", count: i >= 9 ? 2 : 1 });
     if (i >= 6) groups.push({ enemyId: "bomber", count: 1 + Math.floor((i - 6) / 2) });
     if (i >= 7) groups.push({ enemyId: "splitter", count: 1 + Math.floor((i - 7) / 3) });
+    if (i >= 7) groups.push({ enemyId: "stalker", count: 1 + Math.floor((i - 7) / 2) });
     if (i >= 4) groups.push({ enemyId: "charger", count: 1 + Math.floor((i - 4) / 3) });
     if (i >= 8) groups.push({ enemyId: "sentinel", count: 1 + Math.floor((i - 8) / 2) });
     if (i % 3 === 0) groups.push({ enemyId: "overlord", count: 1 });
@@ -511,10 +576,14 @@ export function buildWaves(maxWaves: number): WaveDef[] {
   return waves;
 }
 
+function boostById(id: string): BoostDef | undefined {
+  return BOOSTS.find((b) => b.id === id);
+}
+
 export function applyBoosts(base: PlayerStats, boostIds: string[]): PlayerStats {
   const stats: PlayerStats = { ...base };
   for (const id of boostIds) {
-    const boost = BOOSTS.find((b) => b.id === id);
+    const boost = boostById(id);
     if (!boost) continue;
     if (boost.modifiers.add) {
       for (const key of Object.keys(boost.modifiers.add) as (keyof PlayerStats)[]) {
@@ -554,7 +623,16 @@ export function finalizeStats(stats: PlayerStats): PlayerStats {
 }
 
 export function applyBuild(classId: ClassId, boostIds: string[], wavePickupIds: string[] = []): PlayerStats {
-  const stats = applyBoosts(classById(classId).stats, boostIds);
+  const boosts = boostIds.map(id => boostById(id)!).filter(b => b !== undefined);
+  let stats = applyBoosts(classById(classId).stats, boostIds);
+
+  // Apply synergy bonus if enabled
+  if (FEATURE_FLAGS.ENABLE_SYNERGY_BONUS && boosts.length > 1) {
+    const synergyMultiplier = calculateSynergyBonus(boosts);
+    stats.projectileDamage *= synergyMultiplier;
+    stats.moveSpeed *= synergyMultiplier;
+  }
+
   for (const id of wavePickupIds) {
     const pickup = pickupById(id);
     if (pickup?.modifiers) applyPickupModifiers(stats, pickup.modifiers);
@@ -620,12 +698,14 @@ export function applyTemporaryEffects(stats: PlayerStats, effects: Array<{ modif
   return finalizeStats(stats);
 }
 
-export function availableBoosts(appliedIds: string[], waveIndex: number): BoostDef[] {
+export function availableBoosts(appliedIds: string[], waveIndex: number, unlockedIds: string[] = []): BoostDef[] {
   const copies = new Map<string, number>();
   for (const id of appliedIds) copies.set(id, (copies.get(id) ?? 0) + 1);
+  const unlocked = new Set(unlockedIds);
   return BOOSTS.filter((boost) => {
     if (boost.category === "ult") return false;
     if (boost.minWave && waveIndex < boost.minWave) return false;
+    if (boost.unlockRequired && !unlocked.has(boost.unlockRequired)) return false;
     const taken = copies.get(boost.id) ?? 0;
     return taken < (boost.maxCopies ?? 6);
   });
@@ -723,12 +803,13 @@ export function getUpgradeOptions(
   excludedIds: string[] = [],
   commitmentId: string | null = null,
   recentIds: string[] = [],
+  unlockedIds: string[] = [],
 ): BoostDef[] {
   const excluded = new Set(excludedIds);
   const recentCounts = new Map<string, number>();
   for (const id of recentIds) recentCounts.set(id, (recentCounts.get(id) ?? 0) + 1);
 
-  const pool = availableBoosts(appliedIds, waveIndex).filter((boost) => !excluded.has(boost.id));
+  const pool = availableBoosts(appliedIds, waveIndex, unlockedIds).filter((boost) => !excluded.has(boost.id));
   const summary = getBuildSummary(appliedIds);
   const ranked = pool
     .map((boost) => {

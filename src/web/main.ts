@@ -2,10 +2,14 @@ import { classById, CLASSES, ultLevel } from "../core/content/classes";
 import { getBuildSummary, getFutureWavePreviews, getWavePreview, getXpRequiredForLevel } from "../core/content/catalog";
 import { buildDailyChallenge, buildWeeklyChallenge, getMutatorById } from "../core/content/mutators";
 import { ACHIEVEMENTS } from "../core/content/achievements";
+import { getUnlockedContentIds, MAX_MASTERY_XP, UNLOCKS } from "../core/content/unlocks";
+import { addRunRecord, createRunRecord, getTopRuns, LEADERBOARD_STORAGE_KEY, parseLeaderboard, serializeLeaderboard } from "../core/content/leaderboard";
 import { pickupById } from "../core/content/pickups";
 import { artifactById, canFuseWithState, COMMITMENTS, FUSION_RECIPES, missingFusionIngredients, PACTS, TEMPORARY_EFFECTS } from "../core/content/strategic";
 import { BOOSTS } from "../core/content/catalog";
-import { Simulation } from "../core/Simulation";
+import { ASCENSION_1, getUnlockedAscensionLevels } from "../core/content/ascension-modifiers";
+import type { AscensionLevel } from "../core/types";
+import { getBoostPanelCopy, Simulation } from "../core/Simulation";
 import { CanvasView } from "./CanvasView";
 import { InputAdapter } from "./InputAdapter";
 import { Sfx } from "./Sfx";
@@ -27,7 +31,9 @@ const classLine = document.querySelector("#class-line")!;
 const combatStatus = document.querySelector("#combat-status")!;
 const goldValue = document.querySelector("#gold-value")!;
 const shardValue = document.querySelector("#shard-value")!;
+const masteryValue = document.querySelector("#mastery-value")!;
 const rerollValue = document.querySelector("#reroll-value")!;
+const seedValue = document.querySelector("#seed-value")!;
 const bountyLine = document.querySelector<HTMLDivElement>("#bounty-line")!;
 const bountyResult = document.querySelector<HTMLDivElement>("#bounty-result")!;
 const ultFill = document.querySelector<HTMLDivElement>("#ult-fill")!;
@@ -52,6 +58,8 @@ const pickupList = document.querySelector<HTMLDivElement>("#pickup-list")!;
 const classOverlay = document.querySelector("#class-overlay")!;
 const classCards = document.querySelector("#class-cards")!;
 const boostOverlay = document.querySelector("#boost-overlay")!;
+const boostTitle = document.querySelector("#boost-title");
+const boostDescription = document.querySelector("#boost-description");
 const boostCards = document.querySelector("#boost-cards")!;
 const upgradeManagement = document.querySelector<HTMLDivElement>("#upgrade-management")!;
 const fusionManagement = document.querySelector<HTMLDivElement>("#fusion-management")!;
@@ -70,17 +78,20 @@ const shopOverlay = document.querySelector("#shop-overlay")!;
 const shopCards = document.querySelector<HTMLDivElement>("#shop-cards")!;
 const shopBalance = document.querySelector("#shop-balance")!;
 const leaveShop = document.querySelector<HTMLButtonElement>("#leave-shop")!;
-const waveBrief = document.querySelector("#wave-brief")!;
-const waveThreats = document.querySelector<HTMLDivElement>("#wave-threats")!;
-const futureThreats = document.querySelector<HTMLDivElement>("#future-threats")!;
+const waveBrief = document.querySelector("#wave-brief");
+const waveThreats = document.querySelector<HTMLDivElement>("#wave-threats");
+const futureThreats = document.querySelector<HTMLDivElement>("#future-threats");
 const rerollCount = document.querySelector("#reroll-count")!;
 const rerollBtn = document.querySelector<HTMLButtonElement>("#reroll-btn")!;
 const endOverlay = document.querySelector("#end-overlay")!;
 const endTitle = document.querySelector("#end-title")!;
 const endBody = document.querySelector("#end-body")!;
+const leaderboardList = document.querySelector<HTMLOListElement>("#leaderboard-list")!;
 const restartBtn = document.querySelector("#restart-btn")!;
 const dailyChallengeBtn = document.querySelector<HTMLButtonElement>("#daily-challenge-btn")!;
 const weeklyChallengeBtn = document.querySelector<HTMLButtonElement>("#weekly-challenge-btn")!;
+const ascensionButtons = document.querySelector<HTMLDivElement>("#ascension-buttons")!;
+const ascensionProgress = document.querySelector<HTMLParagraphElement>("#ascension-progress")!;
 
 function boostIcon(boost: (typeof BOOSTS)[number]): string {
   const icons: Record<string, string> = { attack: "A", defense: "D", control: "C", economy: "E", weapon: "W", body: "B", tactic: "T", ult: "U" };
@@ -126,7 +137,10 @@ function boostImpact(boost: (typeof BOOSTS)[number]): string {
   return [...entries, ...additions].slice(0, 2).join(" · ") || "Build etkisi";
 }
 
-let sim = new Simulation({ seed: 42, maxWaves: 12 });
+const sessionSeed = Date.now() >>> 0;
+let sim = new Simulation({ seed: sessionSeed, maxWaves: 12 });
+let selectedAscensionLevel: AscensionLevel = 0;
+let lastAscensionRenderKey = "";
 const savedProfile = localStorage.getItem("wave-arena-profile");
 if (savedProfile) sim.loadProfile(savedProfile);
 const view = new CanvasView(canvas);
@@ -151,7 +165,81 @@ function replaceRun(next: Simulation): void {
   sim.loadProfile(profile);
   lastBoostKey = "";
   lastEndPhase = "";
+  lastAscensionRenderKey = "";
   updateChallengeButtons();
+}
+
+function renderAscensionOptions(): void {
+  const renderKey = `${sim.profile.bestWave}:${selectedAscensionLevel}`;
+  if (renderKey === lastAscensionRenderKey) return;
+  lastAscensionRenderKey = renderKey;
+  const unlockedLevels = getUnlockedAscensionLevels(sim.profile.bestWave);
+  ascensionProgress.textContent = unlockedLevels.includes(1)
+    ? `En iyi dalga: ${sim.profile.bestWave} · Ascension 1 açıldı`
+    : `En iyi dalga: ${sim.profile.bestWave} · Ascension 1 için Wave 8 gerekli`;
+  ascensionButtons.replaceChildren();
+
+  const normal = document.createElement("button");
+  normal.type = "button";
+  normal.className = selectedAscensionLevel === 0 ? "active-run-mode" : "";
+  normal.setAttribute("aria-pressed", String(selectedAscensionLevel === 0));
+  normal.textContent = "Normal run";
+  normal.addEventListener("click", () => {
+    selectedAscensionLevel = 0;
+    renderAscensionOptions();
+  });
+  ascensionButtons.append(normal);
+
+  const ascension = document.createElement("button");
+  ascension.type = "button";
+  ascension.disabled = !unlockedLevels.includes(1);
+  ascension.className = selectedAscensionLevel === 1 ? "active-run-mode" : "";
+  ascension.setAttribute("aria-pressed", String(selectedAscensionLevel === 1));
+  ascension.textContent = ascension.disabled
+    ? `Ascension 1 · Wave ${8} gerekli`
+    : `Ascension 1 · ${ASCENSION_1.effects.join(" · ")}`;
+  ascension.title = ASCENSION_1.description;
+  ascension.addEventListener("click", () => {
+    selectedAscensionLevel = 1;
+    renderAscensionOptions();
+  });
+  ascensionButtons.append(ascension);
+}
+
+function saveAndRenderLeaderboard(): void {
+  if (!sim.state.classId) return;
+  const record = createRunRecord({
+    waveIndex: sim.state.waveIndex,
+    kills: sim.state.kills,
+    seed: sim.getSeed(),
+    classId: sim.state.classId,
+    ascensionLevel: sim.state.activeAscensionLevel,
+    challengeMode: sim.state.challengeMode,
+    victory: sim.state.phase === "victory",
+  });
+  const runs = addRunRecord(parseLeaderboard(localStorage.getItem(LEADERBOARD_STORAGE_KEY)), record);
+  localStorage.setItem(LEADERBOARD_STORAGE_KEY, serializeLeaderboard(runs));
+  leaderboardList.replaceChildren();
+  for (const [index, run] of getTopRuns(runs, sim.state.classId, sim.state.activeAscensionLevel).entries()) {
+    const item = document.createElement("li");
+    item.textContent = `#${index + 1} · Wave ${run.waveIndex} · ${run.kills} kill · Seed ${run.seed}${run.victory ? " · Victory" : ""}`;
+    leaderboardList.append(item);
+  }
+}
+
+function startSelectedRun(classId: Parameters<Simulation["selectClass"]>[0]): void {
+  const config = sim.config;
+  const next = new Simulation({
+    seed: sim.getSeed(),
+    maxWaves: config.maxWaves,
+    mutators: config.mutators,
+    runModifiers: config.runModifiers,
+    dailyChallenge: config.dailyChallenge,
+    ascensionLevel: selectedAscensionLevel,
+  });
+  replaceRun(next);
+  sim.selectClass(classId);
+  selectedAscensionLevel = 0;
 }
 
 function toggleChallenge(mode: "daily" | "weekly"): void {
@@ -176,7 +264,7 @@ for (const cls of CLASSES) {
   button.type = "button";
   button.style.borderColor = cls.color;
   button.innerHTML = `<span class="rarity" style="color:${cls.color}">${cls.role}</span><h3>${cls.name}</h3><p>${cls.description}</p><p class="ult-blurb"><strong>${cls.passive.name}</strong> — ${cls.passive.description}</p><p class="ult-blurb"><strong>${cls.ultName}</strong> — ${cls.ultBlurb}</p>`;
-  button.addEventListener("click", () => sim.selectClass(cls.id));
+  button.addEventListener("click", () => startSelectedRun(cls.id));
   classCards.append(button);
 }
 
@@ -200,7 +288,11 @@ function frame(now: number): void {
 
 function syncHud(): void {
   const { state } = sim;
+  const boostCopy = getBoostPanelCopy(state);
+  if (boostTitle) boostTitle.textContent = boostCopy.title;
+  if (boostDescription) boostDescription.textContent = boostCopy.description;
   updateChallengeButtons();
+  if (state.phase === "class_select") renderAscensionOptions();
   if (state.lastBountyResult) {
     const { bounty, success } = state.lastBountyResult;
     const reward = !success
@@ -232,6 +324,7 @@ function syncHud(): void {
   xpValue.textContent = `${Math.floor(state.xp)} / ${xpRequired}`;
   xpFill.style.width = `${xpRatio * 100}%`;
   levelLine.textContent = `Level ${state.level}`;
+  seedValue.textContent = `${sim.getSeed()}`;
   const hp = state.player.maxHp <= 0 ? 0 : state.player.hp / state.player.maxHp;
   hpValue.textContent = `${Math.ceil(Math.max(0, state.player.hp))} / ${Math.ceil(state.player.maxHp)}`;
   if (hp < lastHpRatio) {
@@ -255,6 +348,7 @@ function syncHud(): void {
     classLine.textContent = `${cls.name} · ${cls.ultName} Sv.${level}`;
     goldValue.textContent = `${state.gold}`;
     shardValue.textContent = `${state.evolutionShards}`;
+    masteryValue.textContent = `${Math.floor(sim.profile.masteryXp ?? 0)} / ${MAX_MASTERY_XP}`;
     rerollValue.textContent = `${state.rerollCharges + state.rerollTokens}`;
     if (state.activeBounty) {
       bountyLine.textContent = `Bounty: ${state.activeBounty.name} · ${state.bountyProgress}${state.activeBounty.amount ? `/${state.activeBounty.amount}` : ""}`;
@@ -275,6 +369,7 @@ function syncHud(): void {
     classLine.textContent = "Sınıf seç";
     goldValue.textContent = "0";
     shardValue.textContent = "0";
+    masteryValue.textContent = `${Math.floor(sim.profile.masteryXp ?? 0)} / ${MAX_MASTERY_XP}`;
     rerollValue.textContent = "0";
     bountyLine.classList.add("hidden");
     ultFill.style.width = "0%";
@@ -409,20 +504,24 @@ function syncHud(): void {
       lastBoostKey = key;
       boostCards.replaceChildren();
       const preview = getWavePreview(state.waveIndex + 1);
-      waveBrief.textContent = preview.summary;
-      waveThreats.replaceChildren();
-      for (const threat of preview.threats) {
-        const badge = document.createElement("span");
-        badge.className = "threat-badge";
-        badge.textContent = threat;
-        waveThreats.append(badge);
+      if (waveBrief) waveBrief.textContent = preview.summary;
+      if (waveThreats) {
+        waveThreats.replaceChildren();
+        for (const threat of preview.threats) {
+          const badge = document.createElement("span");
+          badge.className = "threat-badge";
+          badge.textContent = threat;
+          waveThreats.append(badge);
+        }
       }
-      futureThreats.replaceChildren();
-      for (const future of getFutureWavePreviews(state.waveIndex + 1)) {
-        const item = document.createElement("div");
-        item.className = "future-threat";
-        item.textContent = `Dalga ${future.waveIndex}: ${future.threats.join(" · ")}`;
-        futureThreats.append(item);
+      if (futureThreats) {
+        futureThreats.replaceChildren();
+        for (const future of getFutureWavePreviews(state.waveIndex + 1)) {
+          const item = document.createElement("div");
+          item.className = "future-threat";
+          item.textContent = `Dalga ${future.waveIndex}: ${future.threats.join(" · ")}`;
+          futureThreats.append(item);
+        }
       }
       for (const boost of state.boostOffers) {
         const button = document.createElement("button");
@@ -675,9 +774,14 @@ function syncHud(): void {
     if (lastEndPhase !== state.phase) {
       lastEndPhase = state.phase;
       localStorage.setItem("wave-arena-profile", sim.saveProfile());
+      saveAndRenderLeaderboard();
       endTitle.textContent = state.phase === "victory" ? "Kazandın" : "Kaybettin";
       const clsName = state.classId ? classById(state.classId).name : "-";
-      endBody.textContent = `${clsName} · Dalga ${state.waveIndex} · ${state.kills} öldürme · ulti sv.${ultLevel(state.waveIndex, state.ultBonusLevel)} · Başarımlar ${sim.profile.achievements.length}`;
+      const unlockedNames = getUnlockedContentIds(sim.profile)
+        .map((id) => UNLOCKS.find((unlock) => unlock.id === id)?.name)
+        .filter((name): name is string => Boolean(name));
+      const unlockText = unlockedNames.length > 0 ? ` · Açılanlar: ${unlockedNames.join(", ")}` : "";
+      endBody.textContent = `${clsName} · Dalga ${state.waveIndex} · En iyi dalga ${sim.profile.bestWave} · ${state.kills} öldürme · ulti sv.${ultLevel(state.waveIndex, state.ultBonusLevel)} · Başarımlar ${sim.profile.achievements.length} · Mastery ${Math.floor(sim.profile.masteryXp ?? 0)}/${MAX_MASTERY_XP}${unlockText}`;
     }
     endOverlay.classList.remove("hidden");
   } else {
@@ -687,7 +791,7 @@ function syncHud(): void {
 }
 
 restartBtn.addEventListener("click", () => {
-  sim.reset();
+  sim.reset(sim.state.phase !== "victory");
   lastBoostKey = "";
   lastEndPhase = "";
 });

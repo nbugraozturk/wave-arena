@@ -2,6 +2,8 @@ export const FEATURE_FLAGS = {
     ENABLE_MUTATORS: true,
     ENABLE_DAILY_CHALLENGE: true,
     ENABLE_WEEKLY_CHALLENGE: true,
+    ENABLE_DEBUG_LOGGING: false,
+    ENABLE_SYNERGY_BONUS: false,
 } as const;
 
 export type MutatorId =

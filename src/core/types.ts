@@ -26,6 +26,19 @@ export type EnemyModifierId =
   | "reflective"
   | "ranged";
 
+export type RunModifierId = "elite_rush" | "abundance" | "hardcore" | "rng_boost" | "mutant_surge";
+export type AscensionLevel = 0 | 1;
+export interface RunRecord {
+  waveIndex: number;
+  kills: number;
+  seed: number;
+  timestamp: number;
+  classId: ClassId;
+  ascensionLevel: AscensionLevel;
+  challengeMode: "normal" | "daily" | "weekly";
+  victory: boolean;
+}
+
 export type Team = "player" | "enemy" | "projectile";
 
 export type BoostCategory =
@@ -96,6 +109,7 @@ export interface BoostDef {
   category: BoostCategory;
   rarity: BoostRarity;
   modifiers: BoostModifier;
+  tags?: string[];
   heal?: boolean;
   maxCopies?: number;
   minWave?: number;
@@ -103,6 +117,17 @@ export interface BoostDef {
   antiSynergy?: string[];
   risk?: UpgradeRisk;
   evolution?: string;
+  unlockRequired?: string;
+}
+
+export type UnlockKind = "boost" | "enemy_variant";
+
+export interface UnlockDef {
+  id: string;
+  name: string;
+  description: string;
+  kind: UnlockKind;
+  masteryXp: number;
 }
 
 export interface BuildProgressItem {
@@ -127,6 +152,16 @@ export interface WaveThreatPreview {
   waveIndex?: number;
 }
 
+export interface RunModifierDef {
+  id: RunModifierId;
+  name: string;
+  description: string;
+  rarity: BoostRarity;
+  modifiers?: BoostModifier;
+  waveModifiers?: { eliteChance?: number; enemyCountMultiplier?: number; enemyHpMultiplier?: number };
+  rewardMultiplier?: number;
+}
+
 export interface ArtifactDef {
   id: string;
   name: string;
@@ -144,6 +179,9 @@ export interface ProfileState {
   bestWave: number;
   unlockedClasses: ClassId[];
   achievements: string[];
+  masteryXp?: number;
+  unlockedBoosts?: string[];
+  unlockedEnemyVariants?: string[];
 }
 
 export interface FusionRecipe {
@@ -388,6 +426,9 @@ export interface GameConfig {
   seed: number;
   maxWaves: number;
   mutators?: string[];
+  debugLogging?: boolean;
+  runModifiers?: RunModifierId[];
+  ascensionLevel?: AscensionLevel;
   dailyChallenge?: {
     id: string;
     mode: "daily" | "weekly";
@@ -425,7 +466,7 @@ export interface GameState {
   appliedBoostIds: string[];
   boostOffers: BoostDef[];
   recentBoostOffers: string[];
-  pendingSpawns: { defId: string; modifiers?: EnemyModifierId[] }[];
+  pendingSpawns: { defId: string; modifiers?: EnemyModifierId[]; hpMultiplier?: number }[];
   classId: ClassId | null;
   ultCharge: number;
   ultCooldown: number;
@@ -438,6 +479,7 @@ export interface GameState {
   waveShield: number;
   waveVuln: number;
   rerollCharges: number;
+  freeRerollCharges: number;
   strategicPhase: StrategicPhase;
   gold: number;
   evolutionShards: number;
@@ -469,4 +511,6 @@ export interface GameState {
   mutators: string[];
   challengeMode: "normal" | "daily" | "weekly";
   challenge: GameConfig["dailyChallenge"] | null;
+  activeRunModifiers: RunModifierId[];
+  activeAscensionLevel: AscensionLevel;
 }
