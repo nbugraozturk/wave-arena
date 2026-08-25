@@ -383,7 +383,7 @@ export class Simulation {
     };
   }
 
-  private startWave(index: number): void {
+  startWave(index: number): void {
     const { state } = this;
     if (index > this.config.maxWaves) {
       state.phase = "victory";
@@ -530,7 +530,9 @@ export class Simulation {
   }
 
   private aimPlayer(input: InputSnapshot): void {
-    const aim = vec.sub(vec.create(input.aimX, input.aimY), this.state.player.position);
+    const aimX = input.aimX ?? 0;
+    const aimY = input.aimY ?? 0;
+    const aim = vec.sub(vec.create(aimX, aimY), this.state.player.position);
     const facing = vec.normalize(aim);
     if (facing.x !== 0 || facing.y !== 0) this.state.player.facing = facing;
   }
@@ -557,8 +559,9 @@ export class Simulation {
     const { state } = this;
     state.fireCooldown -= dt;
     state.volleyTimer -= dt;
+    const firing = input.firing ?? input.shoot ?? false;
 
-    if (input.firing && state.fireCooldown <= 0 && state.volleyLeft <= 0) {
+    if (firing && state.fireCooldown <= 0 && state.volleyLeft <= 0) {
       state.volleyLeft = state.stats.burstCount;
       state.volleyTimer = 0;
       state.fireCooldown = 1 / state.stats.fireRate;
@@ -927,10 +930,11 @@ export class Simulation {
 
   private applyBulletHit(shot: ProjectileActor, enemy: EnemyActor): void {
     const { state } = this;
-    if (enemy.shield > 0) {
-      enemy.shield = Math.max(0, enemy.shield - shot.damage);
+    const shield = enemy.shield ?? 0;
+    if (shield > 0) {
+      enemy.shield = Math.max(0, shield - shot.damage);
       shot.hitIds.push(enemy.id);
-      shot.alive = enemy.shield <= 0;
+      shot.alive = (enemy.shield ?? 0) <= 0;
       return;
     }
     const damage = shot.damage * this.state.waveVuln * (enemy.modifiers.includes("armored") ? 0.75 : 1);

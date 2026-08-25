@@ -322,7 +322,12 @@ export interface EnemyActor extends Actor {
   orbitSign: number;
   isBoss: boolean;
   modifiers: EnemyModifierId[];
-  shield: number;
+  shield?: number;
+  regeneration?: { perSecond: number };
+  explodeOnDeath?: { radius: number; damage: number };
+  reflection?: { damage: number };
+  splitOnDeath?: { enemyId: string; count: number };
+  shoot?: { damage: number; interval: number; speed: number; range: number };
 }
 
 export interface ProjectileActor extends Actor {
@@ -396,9 +401,10 @@ export interface AudioCue {
 export interface InputSnapshot {
   moveX: number;
   moveY: number;
-  aimX: number;
-  aimY: number;
-  firing: boolean;
+  aimX?: number;
+  aimY?: number;
+  firing?: boolean;
+  shoot?: boolean;
   ult: boolean;
 }
 
