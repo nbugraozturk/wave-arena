@@ -5,7 +5,7 @@ import { ACHIEVEMENTS } from "../core/content/achievements";
 import { getUnlockedContentIds, MAX_MASTERY_XP, UNLOCKS } from "../core/content/unlocks";
 import { addRunRecord, createRunRecord, getTopRuns, LEADERBOARD_STORAGE_KEY, parseLeaderboard, serializeLeaderboard } from "../core/content/leaderboard";
 import { pickupById } from "../core/content/pickups";
-import { artifactById, canFuseWithState, COMMITMENTS, FUSION_RECIPES, missingFusionIngredients, PACTS, TEMPORARY_EFFECTS } from "../core/content/strategic";
+import { artifactById, canChooseEventOption, canFuseWithState, COMMITMENTS, FUSION_RECIPES, missingFusionIngredients, PACTS, TEMPORARY_EFFECTS } from "../core/content/strategic";
 import { BOOSTS } from "../core/content/catalog";
 import { ASCENSION_1, getUnlockedAscensionLevels } from "../core/content/ascension-modifiers";
 import type { AscensionLevel } from "../core/types";
@@ -724,7 +724,7 @@ function syncHud(): void {
   }
 
   if (state.phase === "event" && state.activeEvent) {
-    const key = `${state.activeEvent.id}:${state.activeEvent.choices.map((choice) => choice.id).join("|")}`;
+    const key = `${state.activeEvent.id}:${state.gold}:${state.activeEvent.choices.map((choice) => choice.id).join("|")}`;
     if (eventCards.dataset.key !== key) {
       eventCards.dataset.key = key;
       eventTitle.textContent = state.activeEvent.name;
@@ -734,6 +734,7 @@ function syncHud(): void {
         const button = document.createElement("button");
         button.className = "boost-card";
         button.type = "button";
+        button.disabled = !canChooseEventOption(choice, state);
         button.innerHTML = `<h3>${choice.label}</h3><p>${choice.description}</p>`;
         button.addEventListener("click", () => sim.selectEventChoice(choice.id));
         eventCards.append(button);

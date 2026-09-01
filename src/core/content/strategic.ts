@@ -10,6 +10,8 @@ import type {
     NodeType,
     PactDef,
     RouteNode,
+    EventChoice,
+    GameState,
 } from "../types";
 
 export const COMMITMENTS: Record<string, { label: string; preferredTags: string[]; blockedTags: string[] }> = {
@@ -88,6 +90,11 @@ export function bossRewardById(id: string): BossRewardDef | undefined {
 
 export function eventById(id: string): EventDef | undefined {
     return EVENTS.find((event) => event.id === id);
+}
+
+export function canChooseEventOption(choice: EventChoice, state: Pick<GameState, "gold">): boolean {
+    const goldCost = Math.max(0, -(choice.effect.gold ?? 0));
+    return state.gold >= goldCost;
 }
 
 export function createShopInventory(appliedBoostIds: string[] = []): ShopItem[] {
