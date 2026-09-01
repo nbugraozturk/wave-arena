@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { buildWaves, getFutureWavePreviews } from "./catalog";
-import { bountiesForWave, canFuse, canFuseWithState, createRouteOptions, createShopInventory, eventById, FUSION_RECIPES, missingFusionIngredients, PACTS } from "./strategic";
+import { bountiesForWave, canChooseEventOption, canFuse, canFuseWithState, createRouteOptions, createShopInventory, eventById, FUSION_RECIPES, missingFusionIngredients, PACTS } from "./strategic";
 import { CLASSES } from "./classes";
 import { buildDailyChallenge } from "./mutators";
 import { Simulation } from "../Simulation";
@@ -251,4 +251,58 @@ test("Pact completion grants its reward only once", () => {
     simulation.state.enemies = [];
     simulation.tick(0.01, { moveX: 0, moveY: 0, aimX: 0, aimY: 0, firing: false, ult: false });
     assert.equal(simulation.state.evolutionShards, shards);
+});
+
+test("event choices expose generic gold validation", () => {
+    const stranger = eventById("stranger");
+    assert.ok(stranger);
+    const purchase = stranger.choices.find((choice) => choice.id === "stranger-gold");
+    const decline = stranger.choices.find((choice) => choice.id === "stranger-decline");
+    assert.ok(purchase && decline);
+    assert.equal(canChooseEventOption(purchase, { gold: 19 }), false);
+    assert.equal(canChooseEventOption(purchase, { gold: 20 }), true);
+    assert.equal(canChooseEventOption(purchase, { gold: 21 }), true);
+    assert.equal(canChooseEventOption(decline, { gold: 0 }), true);
+});
+
+test("Simulation rejects unaffordable event choices before applying effects", () => {
+    const simulation = new Simulation({ seed: 4, maxWaves: 6 });
+    simulation.selectClass("marksman");
+    simulation.state.phase = "event";
+    simulation.state.activeEvent = eventById("stranger") ?? null;
+    simulation.state.gold = 19;
+    const startingShards = simulation.state.evolutionShards;
+
+    assert.equal(simulation.selectEventChoice("stranger-gold"), false);
+    assert.equal(simulation.state.gold, 19);
+    assert.equal(simulation.state.evolutionShards, startingShards);
+    assert.equal(simulation.state.phase, "event");
+    assert.equal(simulation.state.activeEvent?.id, "stranger");
+});
+
+test("Simulation applies event gold cost and effects at and above the requirement", () => {
+    for (const gold of [20, 21]) {
+        const simulation = new Simulation({ seed: gold, maxWaves: 6 });
+        simulation.selectClass("marksman");
+        simulation.state.phase = "event";
+        simulation.state.activeEvent = eventById("stranger") ?? null;
+        simulation.state.gold = gold;
+
+        assert.equal(simulation.selectEventChoice("stranger-gold"), true);
+        assert.equal(simulation.state.gold, gold - 20);
+        assert.equal(simulation.state.evolutionShards, 2);
+        assert.equal(simulation.state.activeEvent, null);
+    }
+});
+
+test("cost-free event choices remain executable", () => {
+    const simulation = new Simulation({ seed: 5, maxWaves: 6 });
+    simulation.selectClass("marksman");
+    simulation.state.phase = "event";
+    simulation.state.activeEvent = eventById("stranger") ?? null;
+    simulation.state.gold = 0;
+
+    assert.equal(simulation.selectEventChoice("stranger-decline"), true);
+    assert.equal(simulation.state.gold, 0);
+    assert.equal(simulation.state.activeEvent, null);
 });

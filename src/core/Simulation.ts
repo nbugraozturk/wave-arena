@@ -14,7 +14,7 @@ import {
 import { getMutatorById } from "./content/mutators";
 import { ACHIEVEMENTS } from "./content/achievements";
 import { classById, CLASSES, ULT_CORE_ID, ultPower } from "./content/classes";
-import { ARTIFACTS, bountiesForWave, BOSS_REWARDS, canFuse, canFuseWithState, commitmentById, FUSION_RECIPES, artifactById, createRouteOptions, createShopInventory, eventById, pactById, PACTS, temporaryEffectById } from "./content/strategic";
+import { ARTIFACTS, bountiesForWave, BOSS_REWARDS, canChooseEventOption, canFuse, canFuseWithState, commitmentById, FUSION_RECIPES, artifactById, createRouteOptions, createShopInventory, eventById, pactById, PACTS, temporaryEffectById } from "./content/strategic";
 import { pickupById, WAVE_PICKUPS } from "./content/pickups";
 import { previewWaves } from "./content/wave-preview";
 import { applyRunModifiersToStats, applyRunModifierToWave } from "./content/run-modifiers";
@@ -1248,7 +1248,7 @@ export class Simulation {
   selectEventChoice(choiceId: string): boolean {
     const { state } = this;
     const choice = state.activeEvent?.choices.find((candidate) => candidate.id === choiceId);
-    if (state.phase !== "event" || !choice) return false;
+    if (state.phase !== "event" || !choice || !canChooseEventOption(choice, state)) return false;
     const effect = choice.effect;
     if (effect.gold) state.gold = Math.max(0, state.gold + effect.gold);
     if (effect.evolutionShards) state.evolutionShards += effect.evolutionShards;
