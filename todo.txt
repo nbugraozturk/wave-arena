@@ -8,7 +8,6 @@
 - [ ] WA-006 - Fix Free Reroll: freeRerollCharges gercekten kullaniliyor; once free charge tuketiliyor; HUD gosteriyor; test mevcut.
 - [ ] WA-007 - Fix Temporary Effect Duration: "3 wave" effect gercekten 3 combat boyunca aktif; start/end sinirlari testli.
 - [ ] WA-008 - Seeded Event Selection: Event node artik hard-coded Shrine degil; EVENTS pool'undan seeded seciliyor; Stranger erisilebilir.
-- [ ] WA-009 - Event Cost Validation: Ornegin 20 gold isteyen Stranger secenegi 20 gold yokken kullanilamiyor; generic choice validation var.
 - [ ] WA-010 - Treasure Reward Fallback: Treasure surekli Magnet vermiyor; owned/full-slot durumda oyuncu odulsuz kalmiyor; deterministic fallback.
 - [ ] WA-011 - Final Boss Reward -> Victory Flow: Son wave boss ise reward secildikten sonra gereksiz route -> wave N+1 yerine run duzgun bitiyor.
 - [ ] WA-012 - Fixed-Step Simulation Runner: Browser FPS degisince simulasyon hizi degismiyor; fixed timestep/accumulator; replay testi 30/60/120 FPS senaryosunda ayni.
