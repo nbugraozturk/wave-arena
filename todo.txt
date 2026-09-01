@@ -1,3 +1,22 @@
-# Wave Arena Todo
+# Ilk 20 Task - Wave Arena Backlog v1
 
-Tum planlanan task'lar backlog.txt dosyasinda takip ediliyor.
+- [ ] WA-001 - Agent Context & Repo Contract: AGENTS.md eklenmis; mimari, komutlar, agent kurallari yazilmis.
+- [ ] WA-002 - PR CI Quality Gate: .github/workflows/ci.yml; PR'da npm ci -> npm test -> npm run build; hata varsa merge kirmizi.
+- [ ] WA-003 - Content Integrity Validator: Duplicate ID, bilinmeyen enemy/boost/artifact/unlock/fusion referansi, impossible recipe gibi hatalari bulan npm run validate:content.
+- [ ] WA-004 - Deterministic Replay Fixture Harness: seed + input sequence -> ozet state JSON fixture; ayni run tekrarlandiginda ayni sonuc.
+- [ ] WA-005 - Save/Load Regression Suite: Profile v1 ve Run v2 round-trip; malformed/eksik/eski payload testleri; state kaybi yok.
+- [ ] WA-006 - Fix Free Reroll: freeRerollCharges gercekten kullaniliyor; once free charge tuketiliyor; HUD gosteriyor; test mevcut.
+- [ ] WA-007 - Fix Temporary Effect Duration: "3 wave" effect gercekten 3 combat boyunca aktif; start/end sinirlari testli.
+- [ ] WA-008 - Seeded Event Selection: Event node artik hard-coded Shrine degil; EVENTS pool'undan seeded seciliyor; Stranger erisilebilir.
+- [ ] WA-009 - Event Cost Validation: Ornegin 20 gold isteyen Stranger secenegi 20 gold yokken kullanilamiyor; generic choice validation var.
+- [ ] WA-010 - Treasure Reward Fallback: Treasure surekli Magnet vermiyor; owned/full-slot durumda oyuncu odulsuz kalmiyor; deterministic fallback.
+- [ ] WA-011 - Final Boss Reward -> Victory Flow: Son wave boss ise reward secildikten sonra gereksiz route -> wave N+1 yerine run duzgun bitiyor.
+- [ ] WA-012 - Fixed-Step Simulation Runner: Browser FPS degisince simulasyon hizi degismiyor; fixed timestep/accumulator; replay testi 30/60/120 FPS senaryosunda ayni.
+- [ ] WA-013 - Input Focus Safety: Tab degisince/window blur olunca WASD, mouse fire ve ulti stuck kalmiyor.
+- [ ] WA-014 - Extract HUD View from main.ts: HUD DOM guncellemeleri HudView/benzeri sinifa ayrilmis; main.ts kuculmus; gameplay davranisi ayni.
+- [ ] WA-015 - Extract Save/Profile Serialization: Profile/run parse-normalize-save kodu Simulation'dan saf core module ayrilmis; public davranis degismiyor.
+- [ ] WA-016 - Extract Strategic Run System: Route/shop/event/pact/fusion/temporary-effect operasyonlari ayri core modulune cikarilmis; Simulation incelmis; mevcut testler yesil.
+- [ ] WA-017 - Combat Mechanic Regression Matrix: Crit, pierce, multishot, ricochet, explosion, slow, lifesteal icin class bagimsiz regression testleri.
+- [ ] WA-018 - Enemy AI & Modifier Regression Matrix: chase/orbit/kite/support/charge + armored/fast/explosive/shielded/reflective vb. davranis testleri.
+- [ ] WA-019 - Balance Report CLI: npm run balance:report; wave basina enemy sayisi/HP, boss/elite bilgisi, boost rarity pool ve temel scaling raporu.
+- [ ] WA-020 - Unity Port Contract Pack: DTO mapping + InputSnapshot + RNG + tick order + WORLD/VIEW + replay fixture formati docs/ altinda tek acik port kontrati.
