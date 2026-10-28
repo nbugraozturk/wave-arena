@@ -9,7 +9,7 @@ export const CLASSES: ClassDef[] = [
     ultName: "Yıkım Dalgası",
     ultBlurb: "Etrafındaki herkesi savurur. Dalga ilerledikçe yarıçap ve hasar artar.",
     color: "#ff8a4a",
-    preferredBoostIds: ["shotgun", "heavy", "knockback", "hp", "multishot", "pierce"],
+    preferredBoostIds: ["knockback", "hp", "multishot", "pierce"],
     passive: { id: "berserker_rage", name: "Rage", description: "Can %40'ın altındayken hasar artar." },
     ult: { kind: "nova", baseCooldown: 14 },
     stats: {
@@ -91,7 +91,7 @@ export const CLASSES: ClassDef[] = [
     ultName: "Kuantum Kapanı",
     ultBlurb: "Nişan noktasına yavaşlatan alan koyar. Süre ve yarıçap dalgayla büyür.",
     color: "#b794f6",
-    preferredBoostIds: ["frost", "ricochet", "explosive", "regen", "lifesteal", "adrenaline"],
+    preferredBoostIds: ["frost", "lifesteal"],
     passive: { id: "elemental_attunement", name: "Elemental Attunement", description: "Yavaşlatılmış düşmanlara karşı hasar artar." },
     ult: { kind: "zone", baseCooldown: 15 },
     stats: {

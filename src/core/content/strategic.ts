@@ -134,7 +134,7 @@ const ROUTE_TYPES: Array<{ type: NodeType; label: string; description: string; r
     { type: "elite", label: "Elite", description: "Next wave is elite and harder, with stronger enemy modifiers and better risk/reward potential.", risk: 3, reward: "Rare+ / Shard" },
     { type: "event", label: "Event", description: "No fight yet. You resolve a story choice that may help or hurt your build.", risk: 0, reward: "Choice" },
     { type: "shop", label: "Shop", description: "No combat. You can spend gold on upgrades, rerolls, or healing instead of fighting immediately.", risk: 0, reward: "Economy" },
-    { type: "treasure", label: "Treasure", description: "No combat. You gain the Magnet artifact immediately before the next battle.", risk: 1, reward: "Artifact" },
+    { type: "treasure", label: "Treasure", description: "No combat. Find a deterministic artifact reward or receive gold and a shard if your artifact collection is full.", risk: 1, reward: "Artifact / Gold / Shard" },
     { type: "rest", label: "Rest", description: "No combat. Restores 35% of max HP and makes the next wave easier to survive.", risk: 0, reward: "Heal / Remove" },
     { type: "challenge", label: "Challenge", description: "Higher danger, but a bigger reward if you survive the next push.", risk: 4, reward: "Legendary choice" },
 ];

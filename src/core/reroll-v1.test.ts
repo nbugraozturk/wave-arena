@@ -142,5 +142,39 @@ describe("PHASE 1.4: Reroll v1", () => {
         // Verify state remains consistent
         assert.ok(sim.state.freeRerollCharges === freeRerollsAfter, "Free rerolls should be preserved");
     });
+
+    it("consumes free charges before paid reroll charges and tokens", () => {
+        const sim = new Simulation({ seed: 43, maxWaves: 5 });
+        sim.selectClass("vanguard");
+        sim.state.phase = "boost";
+        sim.state.freeRerollCharges = 1;
+        sim.state.rerollCharges = 2;
+        sim.state.rerollTokens = 3;
+
+        sim.rerollBoosts();
+        assert.equal(sim.state.freeRerollCharges, 0);
+        assert.equal(sim.state.rerollCharges, 2);
+        assert.equal(sim.state.rerollTokens, 3);
+
+        sim.rerollBoosts();
+        assert.equal(sim.state.rerollCharges, 1);
+        assert.equal(sim.state.rerollTokens, 3);
+
+        sim.rerollBoosts();
+        assert.equal(sim.state.rerollCharges, 0);
+        assert.equal(sim.state.rerollTokens, 3);
+
+        sim.rerollBoosts();
+        assert.equal(sim.state.rerollTokens, 2);
+    });
+
+    it("does not reroll or consume charges outside the boost phase", () => {
+        const sim = new Simulation({ seed: 44, maxWaves: 5 });
+        sim.state.freeRerollCharges = 1;
+        const offers = sim.state.boostOffers;
+        sim.rerollBoosts();
+        assert.equal(sim.state.freeRerollCharges, 1);
+        assert.deepEqual(sim.state.boostOffers, offers);
+    });
 });
 

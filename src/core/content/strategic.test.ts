@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { buildWaves, getFutureWavePreviews } from "./catalog";
-import { bountiesForWave, canChooseEventOption, canFuse, canFuseWithState, createRouteOptions, createShopInventory, eventById, FUSION_RECIPES, missingFusionIngredients, PACTS } from "./strategic";
+import { bountiesForWave, canChooseEventOption, canFuse, canFuseWithState, createRouteOptions, createShopInventory, eventById, EVENTS, FUSION_RECIPES, missingFusionIngredients, PACTS } from "./strategic";
 import { CLASSES } from "./classes";
 import { buildDailyChallenge } from "./mutators";
 import { Simulation } from "../Simulation";
@@ -43,6 +43,58 @@ test("events and shop inventory provide distinct strategic outcomes", () => {
     assert.equal(shrine?.choices.length, 3);
     assert.ok(shrine?.choices.some((choice) => choice.effect.artifactId));
     assert.equal(new Set(createShopInventory().map((item) => item.kind)).size, 4);
+});
+
+test("event routes choose from the seeded event pool and can reach Stranger", () => {
+    const chooseEvent = (seed: number): string | null => {
+        const simulation = new Simulation({ seed, maxWaves: 6 });
+        simulation.selectClass("vanguard");
+        simulation.state.phase = "route";
+        simulation.state.routeOptions = createRouteOptions(3);
+        const eventNode = simulation.state.routeOptions.find((node) => node.type === "event");
+        assert.ok(eventNode);
+        assert.equal(simulation.selectRoute(eventNode.id), true);
+        return simulation.state.activeEvent?.id ?? null;
+    };
+
+    const selected = new Set(Array.from({ length: 24 }, (_, index) => chooseEvent(index + 1)));
+    assert.deepEqual([...selected].sort(), EVENTS.map((event) => event.id).sort());
+    assert.equal(chooseEvent(17), chooseEvent(17));
+});
+
+test("treasure reward varies by seed and grants currency when artifacts are unavailable", () => {
+    const chooseTreasure = (seed: number, ownedArtifacts: string[] = [], slots = 4) => {
+        const simulation = new Simulation({ seed, maxWaves: 6 });
+        simulation.selectClass("marksman");
+        simulation.state.phase = "route";
+        simulation.state.artifacts = [...ownedArtifacts];
+        simulation.state.artifactSlots = slots;
+        simulation.state.routeOptions = [{
+            id: "treasure-test",
+            type: "treasure",
+            label: "Treasure",
+            description: "",
+            risk: 1,
+            reward: "Artifact",
+            waveIndex: 2,
+        }];
+        assert.equal(simulation.selectRoute("treasure-test"), true);
+        return simulation;
+    };
+
+    const rewards = new Set(Array.from({ length: 12 }, (_, index) => chooseTreasure(index + 1).state.artifacts[0]));
+    assert.ok(rewards.size > 1, "treasure artifacts should vary while remaining seed-deterministic");
+    assert.ok([...rewards].some((id) => id !== "magnet"));
+    assert.deepEqual(chooseTreasure(9).state.artifacts, chooseTreasure(9).state.artifacts);
+
+    const alreadyOwned = chooseTreasure(8, ["magnet"]);
+    assert.equal(alreadyOwned.state.artifacts.length, 2);
+    assert.notEqual(alreadyOwned.state.artifacts[1], "magnet");
+
+    const full = chooseTreasure(10, ["magnet", "vampire_fang", "cursed_skull", "bullet_core"]);
+    assert.deepEqual(full.state.artifacts, ["magnet", "vampire_fang", "cursed_skull", "bullet_core"]);
+    assert.equal(full.state.gold, 20);
+    assert.equal(full.state.evolutionShards, 1);
 });
 
 test("run save/load preserves strategic state", () => {

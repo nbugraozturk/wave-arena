@@ -1,5 +1,27 @@
 import type { EnemyModifierId } from "../types";
 
+export function getEliteModifierMultipliers(modifiers: readonly EnemyModifierId[]): {
+    hp: number;
+    speed: number;
+    damage: number;
+} {
+    let hp = 1;
+    let speed = 1;
+    let damage = 1;
+    for (const modifier of modifiers) {
+        if (modifier === "armored") hp *= 1.25;
+        else if (modifier === "fast") speed *= 1.4;
+        else if (modifier === "vampiric") damage *= 1.2;
+        else if (modifier === "regenerating") hp *= 1.2;
+        else if (modifier === "explosive") hp *= 1.15;
+        else if (modifier === "swarming") hp *= 1.1;
+        else if (modifier === "shielded") hp *= 1.15;
+        else if (modifier === "reflective") hp *= 1.2;
+        else if (modifier === "ranged") hp *= 1.15;
+    }
+    return { hp, speed, damage };
+}
+
 export interface EliteModifierDef {
     id: EnemyModifierId;
     name: string;

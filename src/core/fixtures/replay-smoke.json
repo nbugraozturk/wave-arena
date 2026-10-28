@@ -1,0 +1,160 @@
+{
+  "version": 1,
+  "seed": 24681357,
+  "maxWaves": 12,
+  "classId": "marksman",
+  "frames": [
+    {
+      "ticks": 120,
+      "input": {
+        "moveX": 0,
+        "moveY": 0,
+        "aimX": 1900,
+        "aimY": 810,
+        "firing": true,
+        "ult": false
+      }
+    },
+    {
+      "ticks": 120,
+      "input": {
+        "moveX": 0,
+        "moveY": -1,
+        "aimX": 1440,
+        "aimY": 810,
+        "firing": true,
+        "ult": false
+      }
+    },
+    {
+      "ticks": 120,
+      "input": {
+        "moveX": -1,
+        "moveY": 0,
+        "aimX": 1000,
+        "aimY": 810,
+        "firing": true,
+        "ult": false
+      }
+    }
+  ],
+  "expected": {
+    "version": 1,
+    "seed": 24681357,
+    "classId": "marksman",
+    "ticks": 360,
+    "phase": "combat",
+    "time": 6,
+    "waveIndex": 1,
+    "level": 1,
+    "kills": 0,
+    "player": {
+      "x": 914.803399,
+      "y": 244.59055,
+      "hp": 90,
+      "maxHp": 90
+    },
+    "appliedBoostIds": [],
+    "enemies": [
+      {
+        "id": 5,
+        "defId": "grunt",
+        "hp": 24,
+        "x": 1594.322244,
+        "y": 223.093475,
+        "alive": true
+      },
+      {
+        "id": 8,
+        "defId": "grunt",
+        "hp": 6,
+        "x": 1704.858801,
+        "y": 1307.6195,
+        "alive": true
+      },
+      {
+        "id": 11,
+        "defId": "grunt",
+        "hp": 24,
+        "x": 2119.685041,
+        "y": 1364.980322,
+        "alive": true
+      },
+      {
+        "id": 14,
+        "defId": "grunt",
+        "hp": 24,
+        "x": 2048.474173,
+        "y": 117.24946,
+        "alive": true
+      },
+      {
+        "id": 17,
+        "defId": "grunt",
+        "hp": 24,
+        "x": 250.191118,
+        "y": 853.525127,
+        "alive": true
+      }
+    ],
+    "projectiles": [
+      {
+        "id": 25,
+        "damage": 18,
+        "x": 491.734827,
+        "y": 1606.923427,
+        "hostile": false
+      },
+      {
+        "id": 26,
+        "damage": 18,
+        "x": 655.904911,
+        "y": 1493.660132,
+        "hostile": false
+      },
+      {
+        "id": 27,
+        "damage": 18,
+        "x": 769.913199,
+        "y": 1343.732799,
+        "hostile": false
+      },
+      {
+        "id": 28,
+        "damage": 38.7,
+        "x": 872.330051,
+        "y": 1256.989253,
+        "hostile": false
+      },
+      {
+        "id": 29,
+        "damage": 38.7,
+        "x": 944.845996,
+        "y": 1058.692172,
+        "hostile": false
+      },
+      {
+        "id": 30,
+        "damage": 18,
+        "x": 995.146714,
+        "y": 808.032446,
+        "hostile": false
+      },
+      {
+        "id": 31,
+        "damage": 18,
+        "x": 1000.060609,
+        "y": 603.213451,
+        "hostile": false
+      },
+      {
+        "id": 32,
+        "damage": 18,
+        "x": 957.676595,
+        "y": 394.336637,
+        "hostile": false
+      }
+    ],
+    "rngState": 3296589501
+  }
+}

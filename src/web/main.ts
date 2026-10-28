@@ -10,6 +10,7 @@ import { BOOSTS } from "../core/content/catalog";
 import { ASCENSION_1, getUnlockedAscensionLevels } from "../core/content/ascension-modifiers";
 import type { AscensionLevel } from "../core/types";
 import { getBoostPanelCopy, Simulation } from "../core/Simulation";
+import { FixedStepRunner } from "../core/FixedStepRunner";
 import { CanvasView } from "./CanvasView";
 import { InputAdapter } from "./InputAdapter";
 import { Sfx } from "./Sfx";
@@ -139,6 +140,7 @@ function boostImpact(boost: (typeof BOOSTS)[number]): string {
 
 const sessionSeed = Date.now() >>> 0;
 let sim = new Simulation({ seed: sessionSeed, maxWaves: 12 });
+const simulationRunner = new FixedStepRunner();
 let selectedAscensionLevel: AscensionLevel = 0;
 let lastAscensionRenderKey = "";
 const savedProfile = localStorage.getItem("wave-arena-profile");
@@ -162,6 +164,7 @@ function updateChallengeButtons(): void {
 function replaceRun(next: Simulation): void {
   const profile = sim.saveProfile();
   sim = next;
+  simulationRunner.reset();
   sim.loadProfile(profile);
   lastBoostKey = "";
   lastEndPhase = "";
@@ -268,19 +271,24 @@ for (const cls of CLASSES) {
   classCards.append(button);
 }
 
-let last = performance.now();
+let lastFrameTimestamp = performance.now();
 let lastBoostKey = "";
 let lastEndPhase = "";
 let lastHpRatio = 1;
 let hpGhostTimer: number | undefined;
 
 function frame(now: number): void {
-  const dt = (now - last) / 1000;
-  last = now;
+  const frameDelta = (now - lastFrameTimestamp) / 1000;
+  lastFrameTimestamp = now;
   input.sync(sim.state);
-  sim.tick(dt, input.snapshot());
+  const snapshot = input.snapshot();
+  const frameCues: typeof sim.state.cues = [];
+  simulationRunner.advance(frameDelta, snapshot, (dt, fixedInput) => {
+    sim.tick(dt, fixedInput);
+    frameCues.push(...sim.state.cues);
+  });
   input.sync(sim.state);
-  for (const cue of sim.state.cues) sfx.play(cue.kind);
+  for (const cue of frameCues) sfx.play(cue.kind);
   view.draw(sim.state);
   syncHud();
   requestAnimationFrame(frame);
@@ -349,7 +357,7 @@ function syncHud(): void {
     goldValue.textContent = `${state.gold}`;
     shardValue.textContent = `${state.evolutionShards}`;
     masteryValue.textContent = `${Math.floor(sim.profile.masteryXp ?? 0)} / ${MAX_MASTERY_XP}`;
-    rerollValue.textContent = `${state.rerollCharges + state.rerollTokens}`;
+    rerollValue.textContent = state.freeRerollCharges + " free / " + (state.rerollCharges + state.rerollTokens) + " paid";
     if (state.activeBounty) {
       bountyLine.textContent = `Bounty: ${state.activeBounty.name} · ${state.bountyProgress}${state.activeBounty.amount ? `/${state.activeBounty.amount}` : ""}`;
       bountyLine.classList.remove("hidden");
@@ -499,7 +507,19 @@ function syncHud(): void {
   classOverlay.classList.toggle("hidden", state.phase !== "class_select");
 
   if (state.phase === "boost") {
-    const key = `${state.waveIndex}:${state.rerollCharges}:${state.gold}:${state.evolutionShards}:${state.sacrificesUsed}:${state.committedBuild}:${state.appliedBoostIds.join("|")}:${state.activeTemporaryEffects.map((effect) => effect.id).join("|")}:${state.boostOffers.map((b) => b.id).join("|")}`;
+    const key = [
+      state.waveIndex,
+      state.freeRerollCharges,
+      state.rerollCharges,
+      state.rerollTokens,
+      state.gold,
+      state.evolutionShards,
+      state.sacrificesUsed,
+      state.committedBuild,
+      state.appliedBoostIds.join("|"),
+      state.activeTemporaryEffects.map((effect) => effect.id).join("|"),
+      state.boostOffers.map((boost) => boost.id).join("|"),
+    ].join(":");
     if (key !== lastBoostKey) {
       lastBoostKey = key;
       boostCards.replaceChildren();
@@ -647,8 +667,8 @@ function syncHud(): void {
         temporaryActions.append(button);
       }
     }
-    rerollCount.textContent = `Yeniden çekim: ${state.rerollCharges + state.rerollTokens}`;
-    rerollBtn.disabled = state.rerollCharges + state.rerollTokens <= 0;
+    rerollCount.textContent = "Reroll: " + state.freeRerollCharges + " free + " + (state.rerollCharges + state.rerollTokens) + " paid";
+    rerollBtn.disabled = state.freeRerollCharges + state.rerollCharges + state.rerollTokens <= 0;
     boostOverlay.classList.remove("hidden");
   } else {
     lastBoostKey = "";
@@ -793,6 +813,8 @@ function syncHud(): void {
 
 restartBtn.addEventListener("click", () => {
   sim.reset(sim.state.phase !== "victory");
+  simulationRunner.reset();
+  lastFrameTimestamp = performance.now();
   lastBoostKey = "";
   lastEndPhase = "";
 });

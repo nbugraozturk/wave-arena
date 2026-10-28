@@ -12,14 +12,13 @@ import {
   getXpRequiredForLevel,
 } from "./content/catalog";
 import { getMutatorById } from "./content/mutators";
-import { ACHIEVEMENTS } from "./content/achievements";
 import { classById, CLASSES, ULT_CORE_ID, ultPower } from "./content/classes";
-import { ARTIFACTS, bountiesForWave, BOSS_REWARDS, canChooseEventOption, canFuse, canFuseWithState, commitmentById, FUSION_RECIPES, artifactById, createRouteOptions, createShopInventory, eventById, pactById, PACTS, temporaryEffectById } from "./content/strategic";
+import { ARTIFACTS, bountiesForWave, BOSS_REWARDS, canChooseEventOption, canFuse, canFuseWithState, commitmentById, EVENTS, FUSION_RECIPES, artifactById, createRouteOptions, createShopInventory, pactById, PACTS, temporaryEffectById } from "./content/strategic";
 import { pickupById, WAVE_PICKUPS } from "./content/pickups";
 import { previewWaves } from "./content/wave-preview";
 import { applyRunModifiersToStats, applyRunModifierToWave } from "./content/run-modifiers";
-import { getEliteChance, selectEliteModifiers, applyEliteModifiers } from "./content/elite-system";
-import { addMasteryXp, calculateMasteryXpGain, getUnlockedContentIds, MAX_MASTERY_XP, UNLOCKS } from "./content/unlocks";
+import { getEliteChance, selectEliteModifiers, applyEliteModifiers, getEliteModifierMultipliers } from "./content/elite-system";
+import { addMasteryXp, calculateMasteryXpGain, getUnlockedContentIds, UNLOCKS } from "./content/unlocks";
 import { applyAscensionStats, applyAscensionToWave } from "./content/ascension-modifiers";
 import { vec } from "./math/vec2";
 import { Rng } from "./rng";
@@ -40,6 +39,7 @@ import type {
   WavePickup,
 } from "./types";
 import { WORLD } from "./types";
+import { parseProfile, parseRun, serializeProfile, serializeRun } from "./serialization";
 
 const CONTACT_COOLDOWN = 0.45;
 const PROJECTILE_RADIUS = 4.5;
@@ -106,63 +106,27 @@ export class Simulation {
   }
 
   saveProfile(): string {
-    return JSON.stringify(this.profile);
+    return serializeProfile(this.profile);
   }
 
   loadProfile(serialized: string): boolean {
-    try {
-      const profile = JSON.parse(serialized) as ProfileState;
-      if (profile.version !== 1 || !Array.isArray(profile.unlockedClasses)) return false;
-      this.profile = {
-        version: 1,
-        legacyShards: Math.max(0, Math.floor(profile.legacyShards)),
-        runsCompleted: Math.max(0, Math.floor(profile.runsCompleted)),
-        bestWave: Math.max(0, Math.floor(profile.bestWave)),
-        unlockedClasses: profile.unlockedClasses.filter((id): id is ClassId => CLASSES.some((cls) => cls.id === id)),
-        achievements: Array.isArray(profile.achievements)
-          ? profile.achievements.filter((id) => ACHIEVEMENTS.some((achievement) => achievement.id === id))
-          : [],
-        masteryXp: Math.min(MAX_MASTERY_XP, Math.max(0, Math.floor(profile.masteryXp ?? 0))),
-        unlockedBoosts: Array.isArray(profile.unlockedBoosts) ? profile.unlockedBoosts.filter((id) => UNLOCKS.some((unlock) => unlock.id === id && unlock.kind === "boost")) : [],
-        unlockedEnemyVariants: Array.isArray(profile.unlockedEnemyVariants)
-          ? profile.unlockedEnemyVariants.filter((id) => UNLOCKS.some((unlock) => unlock.id === id && unlock.kind === "enemy_variant"))
-          : [],
-      };
-      const pool = availableBoosts(this.state.appliedBoostIds, this.state.waveIndex, getUnlockedContentIds(this.profile));
-      return true;
-    } catch {
-      return false;
-    }
+    const profile = parseProfile(serialized);
+    if (!profile) return false;
+    this.profile = profile;
+    return true;
   }
 
   saveRun(): string {
-    return JSON.stringify({ version: 2, state: this.state, rngState: this.rng.snapshot(), contactTimer: this.contactTimer });
+    return serializeRun(this.state, this.rng.snapshot(), this.contactTimer);
   }
 
   loadRun(serialized: string): boolean {
-    try {
-      const payload = JSON.parse(serialized) as { version?: number; state?: GameState; rngState?: number; contactTimer?: number };
-      if (!payload.state || !payload.state.phase || !Array.isArray(payload.state.appliedBoostIds) || !payload.state.player) return false;
-      if (typeof payload.rngState !== "number") return false;
-      const normalizedState = payload.state;
-      const level = Number(normalizedState.level ?? 1);
-      const pendingLevelUps = Number(normalizedState.pendingLevelUps ?? 0);
-      const xp = Number(normalizedState.xp ?? 0);
-      normalizedState.level = Number.isFinite(level) ? Math.max(1, Math.floor(level)) : 1;
-      normalizedState.pendingLevelUps = Number.isFinite(pendingLevelUps) ? Math.max(0, Math.floor(pendingLevelUps)) : 0;
-      normalizedState.xp = Number.isFinite(xp) ? Math.max(0, xp) : 0;
-      normalizedState.mutators = Array.isArray(normalizedState.mutators) ? normalizedState.mutators : [];
-      normalizedState.challengeMode = normalizedState.challengeMode ?? "normal";
-      normalizedState.challenge = normalizedState.challenge ?? null;
-      normalizedState.activeRunModifiers = Array.isArray(normalizedState.activeRunModifiers) ? normalizedState.activeRunModifiers : [];
-      normalizedState.activeAscensionLevel = normalizedState.activeAscensionLevel === 1 ? 1 : 0;
-      this.state = normalizedState;
-      this.rng.restore(payload.rngState);
-      this.contactTimer = typeof payload.contactTimer === "number" ? payload.contactTimer : 0;
-      return true;
-    } catch {
-      return false;
-    }
+    const payload = parseRun(serialized);
+    if (!payload) return false;
+    this.state = payload.state;
+    this.rng.restore(payload.rngState);
+    this.contactTimer = payload.contactTimer;
+    return true;
   }
 
   selectClass(classId: ClassId): void {
@@ -182,8 +146,9 @@ export class Simulation {
 
   rerollBoosts(): void {
     const { state } = this;
-    if (state.phase !== "boost" || (state.rerollCharges <= 0 && state.rerollTokens <= 0)) return;
-    if (state.rerollCharges > 0) state.rerollCharges -= 1;
+    if (state.phase !== "boost" || (state.freeRerollCharges <= 0 && state.rerollCharges <= 0 && state.rerollTokens <= 0)) return;
+    if (state.freeRerollCharges > 0) state.freeRerollCharges -= 1;
+    else if (state.rerollCharges > 0) state.rerollCharges -= 1;
     else state.rerollTokens -= 1;
     state.boostOffers = this.rollOffers(state.boostOffers.map((boost) => boost.id));
   }
@@ -661,22 +626,10 @@ export class Simulation {
     const artifactHp = state.artifacts.includes("cursed_skull") ? 0.2 : 0;
     const pactDamage = state.activePacts.reduce((total, id) => total + (pactById(id)?.modifiers.enemyDamage ?? 0), 0);
 
-    // Apply elite modifier multipliers
-    let modifierHpMultiplier = 1.0;
-    let modifierSpeedMultiplier = 1.0;
-    let modifierDamageMultiplier = 1.0;
-
-    for (const modId of modifiers) {
-      if (modId === "armored") modifierHpMultiplier *= 1.25;
-      else if (modId === "fast") modifierSpeedMultiplier *= 1.4;
-      else if (modId === "vampiric") modifierDamageMultiplier *= 1.2;
-      else if (modId === "regenerating") modifierHpMultiplier *= 1.2;
-      else if (modId === "explosive") modifierHpMultiplier *= 1.15;
-      else if (modId === "swarming") modifierHpMultiplier *= 1.1;
-      else if (modId === "shielded") modifierHpMultiplier *= 1.15;
-      else if (modId === "reflective") modifierHpMultiplier *= 1.2;
-      else if (modId === "ranged") modifierHpMultiplier *= 1.15;
-    }
+    const modifierMultipliers = getEliteModifierMultipliers(modifiers);
+    const modifierHpMultiplier = modifierMultipliers.hp;
+    const modifierSpeedMultiplier = modifierMultipliers.speed;
+    const modifierDamageMultiplier = modifierMultipliers.damage;
 
     const totalHpMultiplier = baseHpScale * (1 + pactHp + artifactHp) * modifierHpMultiplier * hpMultiplier * this.mutatorMultiplier("enemyHpMultiplier");
     const speedMultiplier = modifierSpeedMultiplier * this.mutatorMultiplier("enemySpeedMultiplier");
@@ -1233,9 +1186,9 @@ export class Simulation {
       return true;
     }
     if (node.type === "rest") state.player.hp = Math.min(state.player.maxHp, state.player.hp + state.player.maxHp * 0.35);
-    if (node.type === "treasure") this.addArtifact("magnet");
+    if (node.type === "treasure") this.grantTreasureReward();
     if (node.type === "event") {
-      state.activeEvent = eventById("mysterious-shrine") ?? null;
+      state.activeEvent = EVENTS.length > 0 ? this.rng.pick(EVENTS) : null;
       state.phase = "event";
       state.strategicPhase = "event";
       return true;
@@ -1243,6 +1196,17 @@ export class Simulation {
     this.startWave(node.waveIndex);
     state.strategicPhase = "combat";
     return true;
+  }
+
+  private grantTreasureReward(): void {
+    const { state } = this;
+    const availableArtifacts = ARTIFACTS.filter((artifact) => !state.artifacts.includes(artifact.id));
+    if (state.artifacts.length < state.artifactSlots && availableArtifacts.length > 0) {
+      const reward = this.rng.pick(availableArtifacts);
+      if (this.addArtifact(reward.id)) return;
+    }
+    state.gold += 20;
+    state.evolutionShards += 1;
   }
 
   selectEventChoice(choiceId: string): boolean {

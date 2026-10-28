@@ -7,6 +7,10 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "test": "node --import tsx --test src/core/**/*.test.ts",
+    "validate:content": "node --import tsx scripts/validate-content.ts",
+    "balance:report": "node --import tsx scripts/balance-report.ts",
+    "replay:fixture": "node --import tsx scripts/replay-fixture.ts",
+    "replay:fixture:update": "node --import tsx scripts/replay-fixture.ts --update",
     "preview": "vite preview",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"

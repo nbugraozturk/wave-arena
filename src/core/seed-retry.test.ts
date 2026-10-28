@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { Simulation } from "./Simulation";
+import { Rng } from "./rng";
 
 test("simulation exposes its active seed and same-seed reset preserves it", () => {
     const simulation = new Simulation({ seed: 12345, maxWaves: 8 });
@@ -10,6 +11,18 @@ test("simulation exposes its active seed and same-seed reset preserves it", () =
     simulation.reset(true);
 
     assert.equal(simulation.getSeed(), 12345);
+});
+
+test("RNG snapshots restore the exact continuation after crossing the 32-bit boundary", () => {
+  const source = new Rng(0xdeadbeef);
+  for (let index = 0; index < 1_000; index += 1) source.next();
+
+  const restored = new Rng(0);
+  restored.restore(source.snapshot());
+  assert.deepEqual(
+    Array.from({ length: 100 }, () => restored.next()),
+    Array.from({ length: 100 }, () => source.next()),
+  );
 });
 
 test("normal reset keeps the existing random restart behavior", () => {
